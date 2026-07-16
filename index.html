@@ -113,7 +113,7 @@
             </div>
             <div class="space-y-1">
                 <h4 class="text-xs font-black text-indigo-900 tracking-wider">필독 유의사항 안내</h4>
-                <p id="notice-text-display" class="text-xs text-indigo-950 leading-relaxed font-medium whitespace-pre-wrap">유의사항 정보를 불러오는 중입니다...</p>
+                <p id="notice-text-display" class="text-xs text-indigo-950 leading-relaxed font-bold whitespace-pre-wrap">유의사항 정보를 불러오는 중입니다...</p>
             </div>
         </div>
 
@@ -1879,9 +1879,9 @@
                         <span class="text-[10px] font-bold text-indigo-700 block">배송 정보</span>
                         <p><strong>수령인:</strong> ${order.shipName}</p>
                         <p><strong>배송지:</strong> [${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
-                        <p class="pt-1.5 flex items-center justify-between border-t border-slate-200/50">
-                            <strong>운송장:</strong>
-                            <span class="text-xs font-mono font-black text-indigo-700">
+                        <p class="pt-1.5 border-t border-slate-200/50">
+                            <strong class="mr-1.5">운송장:</strong>
+                            <span class="text-xs font-mono font-black text-indigo-700 align-baseline">
                                 ${order.trackingNumber ? `[${order.courier || '한진택배'}] ${order.trackingNumber}` : "검수 및 패키징 대기중"}
                             </span>
                         </p>
