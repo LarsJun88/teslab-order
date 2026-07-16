@@ -369,9 +369,14 @@
                             <h3 class="font-bold text-slate-900 text-base">주문 신청서 리스트</h3>
                             <p class="text-xs text-slate-400">실시간 주문 관리 영역입니다.</p>
                         </div>
-                        <button onclick="downloadExcelCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
-                            <i class="fa-solid fa-file-excel"></i> CSV 다운로드
-                        </button>
+                        <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+                            <button type="button" id="order-notification-btn" onclick="enableOrderNotifications()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-bell"></i> 주문 알림 켜기
+                            </button>
+                            <button onclick="downloadExcelCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-file-excel"></i> CSV 다운로드
+                            </button>
+                        </div>
                     </div>
 
                     <div class="overflow-x-auto">
@@ -842,7 +847,8 @@
         updateDoc,
         deleteDoc,
         collection,
-        getDocs
+        getDocs,
+        onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import {
         getStorage,
@@ -1033,6 +1039,7 @@
     let verifiedReviewerProfile = null;
     let draggedProductIndex = null;
     let draggedExtraImageIndex = null;
+    let orderNotificationUnsubscribe = null;
 
     try {
         app = initializeApp(firebaseConfig);
@@ -1843,6 +1850,7 @@
 
                 await loadAdminOrders();
                 renderAdminProducts();
+                startOrderNotificationListenerIfReady();
             } else {
                 showToast("❌ 비밀번호가 일치하지 않습니다.");
             }
@@ -1850,6 +1858,104 @@
             console.error("Admin auth exception.", err);
             showToast("❌ 인증 도중 오류가 발생했습니다.");
         }
+    };
+
+    function updateOrderNotificationButton(isEnabled) {
+        const button = document.getElementById('order-notification-btn');
+        if (!button) return;
+
+        button.className = isEnabled
+            ? "w-full sm:w-auto bg-slate-900 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5"
+            : "w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5";
+        button.innerHTML = isEnabled
+            ? `<i class="fa-solid fa-bell"></i> 주문 알림 켜짐`
+            : `<i class="fa-solid fa-bell"></i> 주문 알림 켜기`;
+    }
+
+    function showNewOrderNotification(order) {
+        const ordererName = order.ordererName || "주문자";
+        const totalAmount = Number(order.finalTotal || 0).toLocaleString();
+        const title = "새 주문 접수";
+        const body = `${ordererName}님 / ${totalAmount}원`;
+
+        showToast(`🔔 ${body}`);
+
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+        }
+
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+        try {
+            new Notification(title, {
+                body,
+                tag: order.orderId || `order-${Date.now()}`
+            });
+        } catch (err) {
+            console.warn("Browser notification failed.", err);
+        }
+    }
+
+    function startOrderNotificationListenerIfReady() {
+        if (!isAdminAuthenticated || isDemoMode || !db) return;
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        if (orderNotificationUnsubscribe) {
+            updateOrderNotificationButton(true);
+            return;
+        }
+
+        let isInitialSnapshot = true;
+        const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+
+        orderNotificationUnsubscribe = onSnapshot(ordersRef, snapshot => {
+            if (isInitialSnapshot) {
+                isInitialSnapshot = false;
+                updateOrderNotificationButton(true);
+                return;
+            }
+
+            snapshot.docChanges().forEach(change => {
+                if (change.type !== 'added') return;
+                showNewOrderNotification(change.doc.data());
+            });
+        }, err => {
+            console.error("Order notification listener failed.", err);
+            orderNotificationUnsubscribe = null;
+            updateOrderNotificationButton(false);
+            showToast("❌ 주문 알림 연결이 끊겼습니다.");
+        });
+    }
+
+    window.enableOrderNotifications = async function() {
+        if (!isAdminAuthenticated) {
+            showToast("❌ 관리자 인증 후 알림을 켤 수 있습니다.");
+            return;
+        }
+
+        if (isDemoMode || !db) {
+            showToast("❌ 온라인 데이터 연결 후 알림을 사용할 수 있습니다.");
+            return;
+        }
+
+        if (!("Notification" in window)) {
+            showToast("❌ 이 브라우저는 알림 기능을 지원하지 않습니다.");
+            return;
+        }
+
+        let permission = Notification.permission;
+
+        if (permission === "default") {
+            permission = await Notification.requestPermission();
+        }
+
+        if (permission !== "granted") {
+            updateOrderNotificationButton(false);
+            showToast("❌ 브라우저 알림 권한이 허용되지 않았습니다.");
+            return;
+        }
+
+        startOrderNotificationListenerIfReady();
+        showToast("🔔 주문 알림이 켜졌습니다.");
     };
 
     async function loadAdminOrders() {
