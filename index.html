@@ -691,13 +691,15 @@
 
             <div class="space-y-1 mt-3">
                 <label class="block font-bold text-slate-600">상세 이미지 URL</label>
-                <textarea id="edit-prod-extra-imgs" rows="3" placeholder="https://..." class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono text-xs"></textarea>
-                <div class="flex justify-end">
+                <textarea id="edit-prod-extra-imgs" rows="3" placeholder="https://..." oninput="renderExtraImageManager()" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono text-xs"></textarea>
+                <div class="flex justify-between items-center gap-2">
+                    <span id="extra-img-count" class="text-[10px] text-slate-400 font-bold">0개</span>
                     <label for="edit-prod-extra-file" class="bg-slate-800 hover:bg-slate-700 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg cursor-pointer transition">
                         사진 다중 업로드
                     </label>
                     <input type="file" id="edit-prod-extra-file" accept="image/*" class="hidden" multiple onchange="handleProductFileSelect(this, 'edit-prod-extra-imgs', true)">
                 </div>
+                <div id="extra-img-manager" class="space-y-2 pt-1"></div>
                 <div id="extra-upload-spinner" class="hidden text-[10px] text-indigo-600 mt-1 font-semibold">
                     <i class="fa-solid fa-spinner animate-spin"></i> 업로드 중...
                 </div>
@@ -2101,6 +2103,96 @@
         `).join('');
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
+    function getExtraImageUrls() {
+        const textarea = document.getElementById('edit-prod-extra-imgs');
+        if (!textarea) return [];
+
+        return textarea.value
+            .split(/[\r\n,]+/)
+            .map(url => url.trim())
+            .filter(Boolean);
+    }
+
+    function setExtraImageUrls(urls) {
+        const textarea = document.getElementById('edit-prod-extra-imgs');
+        if (!textarea) return;
+
+        textarea.value = urls.join('\n');
+        window.renderExtraImageManager();
+    }
+
+    window.renderExtraImageManager = function() {
+        const manager = document.getElementById('extra-img-manager');
+        const count = document.getElementById('extra-img-count');
+        if (!manager || !count) return;
+
+        const urls = getExtraImageUrls();
+        count.textContent = `${urls.length}개`;
+
+        if (urls.length === 0) {
+            manager.innerHTML = `
+                <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-center text-[10px] font-semibold text-slate-400">
+                    상세 이미지가 없습니다.
+                </div>
+            `;
+            return;
+        }
+
+        manager.innerHTML = urls.map((url, index) => {
+            const escapedUrl = escapeHtml(url);
+            const fileLabel = url.split('/').pop()?.split('?')[0] || url;
+
+            return `
+                <div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    <div class="w-12 h-12 rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0">
+                        <img src="${escapedUrl}" alt="" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <span class="block text-[10px] font-black text-indigo-600">상세 이미지 ${index + 1}</span>
+                        <span class="block truncate text-[10px] font-mono text-slate-500" title="${escapedUrl}">${escapeHtml(fileLabel)}</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1 shrink-0">
+                        <button type="button" onclick="moveExtraImage(${index}, -1)" title="위로 이동" ${index === 0 ? 'disabled' : ''} class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                            <i class="fa-solid fa-chevron-up"></i>
+                        </button>
+                        <button type="button" onclick="moveExtraImage(${index}, 1)" title="아래로 이동" ${index === urls.length - 1 ? 'disabled' : ''} class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <button type="button" onclick="removeExtraImage(${index})" title="삭제" class="w-8 h-8 rounded-lg border border-rose-100 bg-white text-rose-500 hover:bg-rose-50 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+
+    window.moveExtraImage = function(index, direction) {
+        const urls = getExtraImageUrls();
+        const targetIndex = index + direction;
+
+        if (targetIndex < 0 || targetIndex >= urls.length) return;
+
+        [urls[index], urls[targetIndex]] = [urls[targetIndex], urls[index]];
+        setExtraImageUrls(urls);
+    };
+
+    window.removeExtraImage = function(index) {
+        const urls = getExtraImageUrls();
+        urls.splice(index, 1);
+        setExtraImageUrls(urls);
+    };
+
     window.openAddProductModal = function() {
         document.getElementById('product-modal-title').textContent = "신규 품목 추가";
         document.getElementById('edit-prod-id').value = "";
@@ -2112,6 +2204,7 @@
         document.getElementById('edit-prod-img').value = "";
         document.getElementById('edit-prod-options').value = "";
         document.getElementById('edit-prod-extra-imgs').value = "";
+        window.renderExtraImageManager();
 
         openModal('product-edit-modal');
     };
@@ -2130,6 +2223,7 @@
         // 문자열 오타 유발 요소를 \n 제어로 전환하여 SyntaxError 원천 소멸
         document.getElementById('edit-prod-options').value = Array.isArray(prod.options) ? prod.options.join('\n') : "";
         document.getElementById('edit-prod-extra-imgs').value = prod.extraImgs || "";
+        window.renderExtraImageManager();
 
         openModal('product-edit-modal');
     };
@@ -2311,6 +2405,7 @@
                 const existing = textarea.value.trim();
 
                 textarea.value = existing ? existing + '\n' + urls.join('\n') : urls.join('\n');
+                window.renderExtraImageManager();
 
                 showToast(`✅ ${files.length}개 이미지 업로드 완료`);
             } else {
