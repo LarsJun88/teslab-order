@@ -51,8 +51,10 @@ Write-Host "== Teslab Telegram order notification deploy ==" -ForegroundColor Cy
 Write-Host "Firebase project: $ProjectId"
 Write-Host ""
 
-npx firebase-tools login:list --project $ProjectId
-if ($LASTEXITCODE -ne 0) {
+$loginListOutput = npx firebase-tools login:list --project $ProjectId 2>&1 | Out-String
+Write-Host $loginListOutput
+
+if ($LASTEXITCODE -ne 0 -or $loginListOutput -match "No authorized accounts") {
     Write-Host ""
     Write-Host "Firebase login is required. A browser login window will open." -ForegroundColor Yellow
     npx firebase-tools login
@@ -109,6 +111,42 @@ if ([string]::IsNullOrWhiteSpace($chatId)) {
 
 if ([string]::IsNullOrWhiteSpace($chatId)) {
     throw "Telegram chat ID is required."
+}
+
+while ($chatId.Trim() -notmatch "^-?\d+$") {
+    Write-Host ""
+    Write-Host "Telegram chat ID must be a number, like 123456789 or -1001234567890." -ForegroundColor Yellow
+    Write-Host "Do not paste the bot token here. Leave it blank to show recent bot chats."
+    $chatId = Read-Host "Telegram chat ID"
+
+    if ([string]::IsNullOrWhiteSpace($chatId)) {
+        Write-Host ""
+        Write-Host "Fetching recent Telegram bot chats..." -ForegroundColor Cyan
+        $updates = Invoke-RestMethod -Method Get -Uri "https://api.telegram.org/bot$botToken/getUpdates"
+
+        if (-not $updates.ok -or -not $updates.result -or $updates.result.Count -eq 0) {
+            Write-Host "No recent chats found. Send /start to the bot in Telegram, then run this script again." -ForegroundColor Red
+            exit 1
+        }
+
+        $updates.result |
+            ForEach-Object {
+                $message = if ($_.message) { $_.message } elseif ($_.channel_post) { $_.channel_post } else { $null }
+                if ($message -and $message.chat) {
+                    [PSCustomObject]@{
+                        ChatId = $message.chat.id
+                        Type = $message.chat.type
+                        Title = $message.chat.title
+                        Username = $message.chat.username
+                        FirstName = $message.chat.first_name
+                    }
+                }
+            } |
+            Sort-Object ChatId -Unique |
+            Format-Table -AutoSize
+
+        $chatId = Read-Host "Copy one ChatId from above and paste it here"
+    }
 }
 
 Write-Host ""
