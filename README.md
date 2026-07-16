@@ -24,6 +24,18 @@ When a new order document is created, Telegram receives:
 
 ### Setup
 
+Quick setup on Windows PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\deploy-telegram-notifications.ps1
+```
+
+The script logs in to Firebase, asks for the Telegram bot token and chat ID,
+stores them as Firebase Secrets, and deploys the Cloud Function.
+
+Manual setup:
+
 1. Create a bot with Telegram `@BotFather` and copy the bot token.
 2. Send a message to the bot from the Telegram account or group that should receive order notifications.
 3. Get the chat ID with:
