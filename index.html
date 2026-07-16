@@ -564,7 +564,7 @@
             <button type="button" onclick="closeProductDetailModal()" class="flex-1 bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl text-xs transition">
                 쇼핑 계속하기
             </button>
-            <button type="button" onclick="addActiveProductToCart()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5">
+            <button type="button" id="detail-add-cart-btn" onclick="addActiveProductToCart()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-cart-shopping"></i> 장바구니 담기
             </button>
         </div>
@@ -1112,6 +1112,38 @@
         return 0;
     }
 
+    function isSoldOutText(value) {
+        return /\(\s*품절\s*\)/.test(String(value || ''));
+    }
+
+    function isProductSoldOut(product) {
+        return isSoldOutText(product?.name) || isSoldOutText(product?.itemNo);
+    }
+
+    function normalizeOptionLabel(value) {
+        return String(value || '')
+            .replace(/\([+-]\s*[\d,]+원\)/g, '')
+            .replace(/\(\s*품절\s*\)/g, '')
+            .trim();
+    }
+
+    function isCartItemSoldOut(item) {
+        const product = products.find(prod => prod.id === item.productId);
+        if (!product) return false;
+        if (isProductSoldOut(product)) return true;
+
+        const cartLabel = normalizeOptionLabel(item.optionName);
+        const options = Array.isArray(product.options) ? product.options : [];
+
+        return options.some(option => {
+            return isSoldOutText(option) && cartLabel.includes(normalizeOptionLabel(option));
+        });
+    }
+
+    function findSoldOutCartItem() {
+        return cart.find(item => isCartItemSoldOut(item));
+    }
+
     async function initCatalogAndNotice() {
         if (isDemoMode) return;
 
@@ -1182,11 +1214,15 @@
             return;
         }
 
-        listContainer.innerHTML = products.map(prod => `
-            <div class="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group" onclick="openProductDetailModal('${prod.id}')">
+        listContainer.innerHTML = products.map(prod => {
+            const soldOut = isProductSoldOut(prod);
+
+            return `
+            <div class="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group ${soldOut ? 'opacity-80' : ''}" onclick="openProductDetailModal('${prod.id}')">
                 <div class="relative aspect-[4/3] bg-slate-50 border-b border-slate-50 overflow-hidden shrink-0">
                     <img src="${prod.img || ''}" alt="${prod.name}" class="w-full h-full object-cover img-zoom" onerror="this.src='https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop'">
                     <span class="absolute top-2.5 left-2.5 bg-slate-900/80 backdrop-blur-sm text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${prod.itemNo || ''}</span>
+                    ${soldOut ? `<span class="absolute top-2.5 right-2.5 bg-rose-600 text-white font-black text-[10px] px-2 py-1 rounded-md shadow">품절</span>` : ''}
                     <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center">
                         <span class="bg-white text-slate-950 text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5">
                             <i class="fa-solid fa-magnifying-glass"></i> 상세 보기
@@ -1198,11 +1234,12 @@
                     <p class="text-xs text-slate-400 truncate">${prod.desc || ''}</p>
                     <div class="flex items-center justify-between pt-1">
                         <span class="text-sm font-black text-slate-950">${Number(prod.price || 0).toLocaleString()}원</span>
-                        <span class="text-[10px] text-indigo-600 font-bold bg-indigo-50/70 px-2 py-1 rounded">옵션지원</span>
+                        <span class="text-[10px] ${soldOut ? 'text-rose-600 bg-rose-50' : 'text-indigo-600 bg-indigo-50/70'} font-bold px-2 py-1 rounded">${soldOut ? '품절' : '옵션지원'}</span>
                     </div>
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     window.openProductDetailModal = function(prodId) {
@@ -1233,7 +1270,11 @@
 
         const selectEl = document.getElementById('detail-opt-select');
         const opts = Array.isArray(prod.options) && prod.options.length > 0 ? prod.options : ["기본형"];
-        selectEl.innerHTML = `<option value="">-- 옵션을 선택해 주세요 --</option>` + opts.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+        selectEl.innerHTML = `<option value="">-- 옵션을 선택해 주세요 --</option>` + opts.map(opt => {
+            const soldOutOption = isProductSoldOut(prod) || isSoldOutText(opt);
+            const safeOpt = escapeHtml(opt);
+            return `<option value="${safeOpt}" ${soldOutOption ? 'disabled' : ''}>${safeOpt}${soldOutOption && !isSoldOutText(opt) ? ' (품절)' : ''}</option>`;
+        }).join('');
 
         const extraImgsContainer = document.getElementById('detail-extra-images');
 
@@ -1270,6 +1311,7 @@
 
         switchDetailTab('desc');
         calculateDetailMockPrice();
+        updateDetailAddButtonState();
         loadReviewsForProduct(prod.id);
 
         document.getElementById('detail-page-modal').classList.remove('hidden');
@@ -1317,6 +1359,22 @@
         calculateDetailMockPrice();
     };
 
+    function updateDetailAddButtonState() {
+        const button = document.getElementById('detail-add-cart-btn');
+        if (!button || !activeProduct) return;
+
+        const selectedVal = document.getElementById('detail-opt-select').value;
+        const soldOut = isProductSoldOut(activeProduct) || isSoldOutText(selectedVal);
+
+        button.disabled = soldOut;
+        button.className = soldOut
+            ? "flex-1 bg-slate-300 text-slate-500 font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5 cursor-not-allowed"
+            : "flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5";
+        button.innerHTML = soldOut
+            ? `<i class="fa-solid fa-ban"></i> 품절 상품`
+            : `<i class="fa-solid fa-cart-shopping"></i> 장바구니 담기`;
+    }
+
     window.calculateDetailMockPrice = function() {
         if (!activeProduct) return;
 
@@ -1325,12 +1383,18 @@
         const cost = (Number(activeProduct.price || 0) + extra) * activeDetailQty;
 
         document.getElementById('detail-total-cost').textContent = `${cost.toLocaleString()}원`;
+        updateDetailAddButtonState();
     };
 
     window.addActiveProductToCart = function() {
         if (!activeProduct) return;
 
         const selectedVal = document.getElementById('detail-opt-select').value;
+
+        if (isProductSoldOut(activeProduct) || isSoldOutText(selectedVal)) {
+            showToast("❌ 품절된 품목은 주문할 수 없습니다.");
+            return;
+        }
 
         if (!selectedVal) {
             showToast("⚠️ 옵션을 먼저 선택해 주세요.");
@@ -1373,10 +1437,13 @@
             return;
         }
 
-        container.innerHTML = cart.map((item, idx) => `
+        container.innerHTML = cart.map((item, idx) => {
+            const soldOut = isCartItemSoldOut(item);
+
+            return `
             <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div class="space-y-1">
-                    <span class="text-xs font-bold text-slate-800 block">${item.optionName}</span>
+                    <span class="text-xs font-bold text-slate-800 block">${item.optionName} ${soldOut ? '<em class="not-italic text-rose-600">(품절)</em>' : ''}</span>
                     <span class="text-[11px] font-medium text-slate-400">${item.unitPrice.toLocaleString()}원</span>
                 </div>
                 <div class="flex items-center gap-3">
@@ -1390,7 +1457,8 @@
                     </button>
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     window.updateCartQty = function(index, delta) {
@@ -1510,6 +1578,12 @@
 
         if (cart.length === 0) {
             showToast("❌ 최소 한 개 이상의 품목을 담아주세요.");
+            return;
+        }
+
+        const soldOutCartItem = findSoldOutCartItem();
+        if (soldOutCartItem) {
+            showToast(`❌ 품절된 품목은 주문할 수 없습니다: ${soldOutCartItem.optionName}`);
             return;
         }
 
