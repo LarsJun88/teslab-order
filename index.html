@@ -30,31 +30,68 @@
         .img-zoom:hover {
             transform: scale(1.04);
         }
+        @media (min-width: 1024px) {
+            body {
+                font-size: 17px;
+            }
+            .text-\[10px\] {
+                font-size: 0.75rem !important;
+                line-height: 1rem !important;
+            }
+            .text-\[11px\] {
+                font-size: 0.8125rem !important;
+                line-height: 1.125rem !important;
+            }
+            .text-xs {
+                font-size: 0.875rem !important;
+                line-height: 1.25rem !important;
+            }
+            .text-sm {
+                font-size: 1rem !important;
+                line-height: 1.5rem !important;
+            }
+            .text-base {
+                font-size: 1.125rem !important;
+                line-height: 1.625rem !important;
+            }
+            .text-lg {
+                font-size: 1.25rem !important;
+                line-height: 1.75rem !important;
+            }
+            .text-xl {
+                font-size: 1.5rem !important;
+                line-height: 2rem !important;
+            }
+            .text-2xl {
+                font-size: 1.75rem !important;
+                line-height: 2.25rem !important;
+            }
+        }
     </style>
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
 <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-    <div class="max-w-5xl mx-auto px-4 flex items-center justify-between h-16">
-        <div class="flex items-center gap-2">
-            <span class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-sm">TL</span>
-            <span class="font-extrabold text-slate-900 tracking-tight text-lg">롸쓰의 테슬랩</span>
+    <div class="max-w-5xl mx-auto px-4 flex items-center justify-between gap-3 h-20 lg:h-24">
+        <div class="flex items-center gap-3 sm:gap-4 shrink-0">
+            <span class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-xl sm:text-2xl lg:text-3xl">TL</span>
+            <span class="font-extrabold text-slate-900 tracking-tight text-xl sm:text-2xl lg:text-4xl">롸쓰의 테슬랩</span>
         </div>
-        <nav class="flex h-full gap-1">
-            <button onclick="switchTab('order-tab', 'view-order-form')" id="order-tab" class="px-3 sm:px-4 h-full border-b-2 border-transparent text-sm font-semibold text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5 tab-active">
+        <nav class="flex h-full gap-0.5 sm:gap-1 shrink-0">
+            <button onclick="switchTab('order-tab', 'view-order-form')" id="order-tab" class="px-2 sm:px-3 lg:px-4 h-full border-b-2 border-transparent text-xs sm:text-sm lg:text-base font-semibold text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5 tab-active">
                 <i class="fa-solid fa-store"></i> 상품구매
             </button>
-            <button onclick="switchTab('track-tab', 'view-track-order')" id="track-tab" class="px-3 sm:px-4 h-full border-b-2 border-transparent text-sm font-semibold text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5">
+            <button onclick="switchTab('track-tab', 'view-track-order')" id="track-tab" class="px-2 sm:px-3 lg:px-4 h-full border-b-2 border-transparent text-xs sm:text-sm lg:text-base font-semibold text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5">
                 <i class="fa-solid fa-magnifying-glass"></i> 구매조회
             </button>
-            <button onclick="switchTab('admin-tab', 'view-admin-dashboard')" id="admin-tab" class="px-3 sm:px-4 h-full border-b-2 border-transparent text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-all flex items-center gap-1.5">
+            <button onclick="switchTab('admin-tab', 'view-admin-dashboard')" id="admin-tab" class="px-2 sm:px-3 lg:px-4 h-full border-b-2 border-transparent text-xs sm:text-sm lg:text-base font-semibold text-slate-500 hover:text-indigo-600 transition-all flex items-center gap-1.5">
                 <i class="fa-solid fa-user-gear"></i> 관리자모드
             </button>
         </nav>
     </div>
 </header>
 
-<div id="toast-container" class="fixed top-20 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4"></div>
+<div id="toast-container" class="fixed top-24 lg:top-28 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4"></div>
 
 <main class="flex-grow max-w-5xl w-full mx-auto px-4 py-6">
 
@@ -323,7 +360,7 @@
                     <i class="fa-solid fa-rectangle-list mr-1.5"></i> 주문 관리
                 </button>
                 <button onclick="switchAdminSubTab('stats')" id="subtab-stats" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition">
-                    <i class="fa-solid fa-chart-pie mr-1.5"></i> 수량 통계
+                    <i class="fa-solid fa-chart-pie mr-1.5"></i> 통계
                 </button>
                 <button onclick="switchAdminSubTab('products')" id="subtab-products" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition">
                     <i class="fa-solid fa-tags mr-1.5"></i> 상품/공지
@@ -404,8 +441,40 @@
             <!-- Admin Stats Sub-Tab -->
             <div id="admin-section-stats" class="space-y-6 hidden">
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
-                    <h3 class="font-bold text-slate-900 text-base mb-1">📊 품목별 누적 주문 수량 통계</h3>
-                    <p class="text-xs text-slate-400 mb-6">접수된 주문 건의 수량을 품목별로 집계합니다.</p>
+                    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-base mb-1">📊 통계</h3>
+                            <p class="text-xs text-slate-400">전체, 월별, 년도별로 주문 수량과 판매 금액을 확인합니다.</p>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <div class="flex gap-2 bg-slate-50 border border-slate-100 p-1 rounded-xl">
+                                <button type="button" onclick="switchStatsMode('all')" id="stats-mode-all" class="px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition">전체</button>
+                                <button type="button" onclick="switchStatsMode('month')" id="stats-mode-month" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">월별</button>
+                                <button type="button" onclick="switchStatsMode('year')" id="stats-mode-year" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">년도별</button>
+                            </div>
+                            <div id="stats-period-controls" class="hidden">
+                                <select id="stats-period-select" onchange="changeStatsPeriod(this.value)" class="w-full sm:w-40 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                        <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">조회 기준</span>
+                            <span class="text-base font-extrabold text-slate-800" id="stats-current-label">전체</span>
+                        </div>
+                        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-indigo-500 block uppercase">총 주문 수량</span>
+                            <span class="text-base font-extrabold text-indigo-900" id="stats-summary-qty">0개</span>
+                        </div>
+                        <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-emerald-600 block uppercase">판매 금액</span>
+                            <span class="text-base font-extrabold text-emerald-900" id="stats-summary-sales">0원</span>
+                            <span class="text-[10px] font-semibold text-emerald-600 block mt-1" id="stats-summary-orders">0건 주문</span>
+                        </div>
+                    </div>
+
                     <div id="stats-chart-container" class="space-y-4 max-w-xl mx-auto py-4"></div>
                     <div class="mt-8 overflow-x-auto">
                         <h4 class="font-bold text-slate-800 text-xs mb-3 uppercase tracking-wider">상세 집계</h4>
@@ -1040,6 +1109,8 @@
     let draggedProductIndex = null;
     let draggedExtraImageIndex = null;
     let orderNotificationUnsubscribe = null;
+    let activeStatsMode = "all";
+    let activeStatsPeriod = "";
 
     try {
         app = initializeApp(firebaseConfig);
@@ -2171,9 +2242,136 @@
         }
     };
 
+    function getOrderDate(order) {
+        const source = order.timestamp || order.createdAt || "";
+        const parsed = new Date(source);
+
+        if (Number.isNaN(parsed.getTime())) {
+            return null;
+        }
+
+        return parsed;
+    }
+
+    function getStatsPeriodKey(order, mode) {
+        const orderDate = getOrderDate(order);
+
+        if (!orderDate) {
+            return "unknown";
+        }
+
+        const year = String(orderDate.getFullYear());
+        const month = String(orderDate.getMonth() + 1).padStart(2, '0');
+
+        if (mode === "year") {
+            return year;
+        }
+
+        return `${year}-${month}`;
+    }
+
+    function getStatsPeriodLabel(key, mode) {
+        if (!key || key === "unknown") {
+            return "날짜 없음";
+        }
+
+        if (mode === "year") {
+            return `${key}년`;
+        }
+
+        const [year, month] = key.split("-");
+        return `${year}년 ${Number(month)}월`;
+    }
+
+    function getStatsModeButtonClass(isActive) {
+        return isActive
+            ? "px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition"
+            : "px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition";
+    }
+
+    function renderStatsControls(orders) {
+        const allBtn = document.getElementById('stats-mode-all');
+        const monthBtn = document.getElementById('stats-mode-month');
+        const yearBtn = document.getElementById('stats-mode-year');
+        const periodControls = document.getElementById('stats-period-controls');
+        const periodSelect = document.getElementById('stats-period-select');
+
+        if (allBtn) allBtn.className = getStatsModeButtonClass(activeStatsMode === "all");
+        if (monthBtn) monthBtn.className = getStatsModeButtonClass(activeStatsMode === "month");
+        if (yearBtn) yearBtn.className = getStatsModeButtonClass(activeStatsMode === "year");
+
+        if (!periodControls || !periodSelect) return;
+
+        if (activeStatsMode === "all") {
+            activeStatsPeriod = "";
+            periodControls.classList.add('hidden');
+            periodSelect.innerHTML = "";
+            return;
+        }
+
+        const periods = Array.from(new Set(
+            orders.map(order => getStatsPeriodKey(order, activeStatsMode))
+        )).sort((a, b) => {
+            if (a === "unknown") return 1;
+            if (b === "unknown") return -1;
+            return b.localeCompare(a);
+        });
+
+        if (periods.length === 0) {
+            activeStatsPeriod = "";
+            periodControls.classList.add('hidden');
+            periodSelect.innerHTML = "";
+            return;
+        }
+
+        if (!activeStatsPeriod || !periods.includes(activeStatsPeriod)) {
+            activeStatsPeriod = periods[0];
+        }
+
+        periodSelect.innerHTML = periods.map(period => `
+            <option value="${period}" ${period === activeStatsPeriod ? "selected" : ""}>${getStatsPeriodLabel(period, activeStatsMode)}</option>
+        `).join('');
+        periodControls.classList.remove('hidden');
+    }
+
+    function getOrdersForActiveStatsMode(orders) {
+        if (activeStatsMode === "all") {
+            return [...orders];
+        }
+
+        if (!activeStatsPeriod) {
+            return [];
+        }
+
+        return orders.filter(order => getStatsPeriodKey(order, activeStatsMode) === activeStatsPeriod);
+    }
+
+    function getCurrentStatsLabel() {
+        if (activeStatsMode === "all") {
+            return "전체";
+        }
+
+        return getStatsPeriodLabel(activeStatsPeriod, activeStatsMode);
+    }
+
+    window.switchStatsMode = function(mode) {
+        activeStatsMode = mode;
+        activeStatsPeriod = "";
+        renderAdminStatistics();
+    };
+
+    window.changeStatsPeriod = function(period) {
+        activeStatsPeriod = period;
+        renderAdminStatistics();
+    };
+
     async function renderAdminStatistics() {
         const chartContainer = document.getElementById('stats-chart-container');
         const tableBody = document.getElementById('stats-table-body');
+        const summaryQty = document.getElementById('stats-summary-qty');
+        const summarySales = document.getElementById('stats-summary-sales');
+        const summaryOrders = document.getElementById('stats-summary-orders');
+        const currentLabel = document.getElementById('stats-current-label');
 
         chartContainer.innerHTML = `
             <div class="text-center py-6 text-slate-400">
@@ -2199,6 +2397,9 @@
             globalOrders = [...localOrders];
         }
 
+        renderStatsControls(globalOrders);
+
+        const targetOrders = getOrdersForActiveStatsMode(globalOrders);
         const stats = {};
 
         products.forEach(p => {
@@ -2206,30 +2407,41 @@
         });
 
         let totalQty = 0;
+        let totalSales = 0;
 
-        globalOrders.forEach(order => {
+        targetOrders.forEach(order => {
             if (!order.cart || !Array.isArray(order.cart)) return;
 
             order.cart.forEach(item => {
-                const cleanName = item.optionName.split(" (")[0];
+                const cleanName = String(item.optionName || '미분류').split(" (")[0];
+                const quantity = Number(item.quantity || 0);
+                const lineSales = Number(item.unitPrice || 0) * quantity;
 
                 if (!stats[cleanName]) {
                     stats[cleanName] = { count: 0, sales: 0 };
                 }
 
-                stats[cleanName].count += Number(item.quantity || 0);
-                stats[cleanName].sales += Number(item.unitPrice || 0) * Number(item.quantity || 0);
-                totalQty += Number(item.quantity || 0);
+                stats[cleanName].count += quantity;
+                stats[cleanName].sales += lineSales;
+                totalQty += quantity;
+                totalSales += lineSales;
             });
         });
 
+        if (summaryQty) summaryQty.textContent = `${totalQty.toLocaleString()}개`;
+        if (summarySales) summarySales.textContent = `${totalSales.toLocaleString()}원`;
+        if (summaryOrders) summaryOrders.textContent = `${targetOrders.length.toLocaleString()}건 주문`;
+        if (currentLabel) currentLabel.textContent = getCurrentStatsLabel();
+
         if (totalQty === 0) {
-            chartContainer.innerHTML = `<div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl">주문 데이터가 없습니다.</div>`;
+            chartContainer.innerHTML = `<div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl">${escapeHtml(getCurrentStatsLabel())} 기준 주문 데이터가 없습니다.</div>`;
             tableBody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-400">주문 데이터가 없습니다.</td></tr>`;
             return;
         }
 
-        const sortedStats = Object.entries(stats).sort((a, b) => b[1].count - a[1].count);
+        const sortedStats = Object.entries(stats)
+            .filter(([, val]) => val.count > 0)
+            .sort((a, b) => b[1].count - a[1].count);
         const maxVal = Math.max(...sortedStats.map(s => s[1].count), 1);
 
         chartContainer.innerHTML = sortedStats.map(([name, val], index) => {
@@ -2239,9 +2451,9 @@
 
             return `
                 <div class="space-y-1 text-xs">
-                    <div class="flex justify-between font-semibold">
-                        <span class="text-slate-700">${name}</span>
-                        <span class="text-slate-900 font-bold">${val.count}개 <span class="text-[10px] text-slate-400 font-normal">(${val.sales.toLocaleString()}원)</span></span>
+                    <div class="flex justify-between gap-4 font-semibold">
+                        <span class="text-slate-700 truncate">${escapeHtml(name)}</span>
+                        <span class="text-slate-900 font-bold shrink-0">${val.count.toLocaleString()}개 <span class="text-[10px] text-slate-400 font-normal">(${val.sales.toLocaleString()}원)</span></span>
                     </div>
                     <div class="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden">
                         <div class="${barColor} h-full rounded-full transition-all duration-500" style="width: ${percent}%"></div>
@@ -2252,7 +2464,7 @@
 
         tableBody.innerHTML = sortedStats.map(([name, val]) => `
             <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-                <td class="p-3 font-semibold text-slate-800">${name}</td>
+                <td class="p-3 font-semibold text-slate-800">${escapeHtml(name)}</td>
                 <td class="p-3 text-right font-bold text-slate-900">${val.count.toLocaleString()}개</td>
                 <td class="p-3 text-right font-mono text-indigo-600 font-bold">${val.sales.toLocaleString()}원</td>
             </tr>
@@ -2934,27 +3146,26 @@
         }
 
         const headers = [
-            "이름", "연락처", "배송주소", "주문품목", "메모",
-            "주문번호", "신청일시", "주문상태", "TKC카페닉네임", "차량정보",
-            "총액", "입금자성함", "수령인", "수령인번호", "우편번호", "도서산간여부", "송장번호", "택배사"
+            "날짜", "주문상태", "이름", "연락처", "주소", "주문품목", "메모", "닉네임", "차량정보", "총액",
+            "주문번호", "입금자성함", "수령인", "수령인번호", "우편번호", "도서산간여부", "송장번호", "택배사"
         ];
 
         const rows = globalOrders.map(order => {
-            const cartSummaryText = order.cart.map(itm => `${itm.optionName}(${itm.quantity}개)`).join(' | ');
+            const cartSummaryText = (order.cart || []).map(itm => `${itm.optionName}(${itm.quantity}개)`).join(' | ');
             const fullAddress = `[${order.postalCode}] ${order.addressBasic} ${order.addressDetail}`;
 
             return [
+                order.createdAt,
+                order.status,
                 order.ordererName,
                 order.ordererPhone,
                 fullAddress,
                 cartSummaryText,
                 order.shippingMemo,
-                order.orderId,
-                order.createdAt,
-                order.status,
                 order.ordererNickname,
                 order.ordererCarInfo || "미기입",
                 order.finalTotal,
+                order.orderId,
                 order.depositorName,
                 order.shipName,
                 order.shipPhone,
