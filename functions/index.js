@@ -20,15 +20,34 @@ function formatWon(value) {
   return `${amount.toLocaleString("ko-KR")}원`;
 }
 
+function formatCartItems(cart) {
+  if (!Array.isArray(cart) || cart.length === 0) {
+    return "주문 품목 없음";
+  }
+
+  return cart.map((item) => {
+    const optionName = item.optionName || "품목명 없음";
+    const quantity = Number(item.quantity || 0);
+    const itemTotal = Number(item.unitPrice || 0) * quantity;
+
+    return `- ${escapeHtml(optionName)} x${quantity} (${escapeHtml(formatWon(itemTotal))})`;
+  }).join("\n");
+}
+
 function buildTelegramMessage(order) {
   const ordererName = order.ordererName || "주문자";
   const finalTotal = formatWon(order.finalTotal);
   const orderId = order.orderId || "주문번호 없음";
+  const cartItems = formatCartItems(order.cart);
 
   return [
     "<b>새 주문 접수</b>",
     `주문자: ${escapeHtml(ordererName)}`,
     `총 금액: ${escapeHtml(finalTotal)}`,
+    "",
+    "<b>주문 품목</b>",
+    cartItems,
+    "",
     `주문번호: ${escapeHtml(orderId)}`
   ].join("\n");
 }
