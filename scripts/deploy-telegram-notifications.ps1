@@ -45,6 +45,56 @@ function Set-FirebaseSecretFromValue {
     }
 }
 
+function Get-TelegramUpdates {
+    param(
+        [string]$BotToken
+    )
+
+    try {
+        return Invoke-RestMethod -Method Get -Uri "https://api.telegram.org/bot$BotToken/getUpdates"
+    } catch {
+        Write-Host ""
+        Write-Host "Telegram API could not find that bot token." -ForegroundColor Red
+        Write-Host "Check that you pasted the full token from @BotFather." -ForegroundColor Yellow
+        Write-Host "The token format should look like: 1234567890:AA..." -ForegroundColor Yellow
+        Write-Host "Do not paste the bot username, bot name, or only the text after the colon." -ForegroundColor Yellow
+        throw
+    }
+}
+
+function Show-TelegramChats {
+    param(
+        [string]$BotToken
+    )
+
+    Write-Host ""
+    Write-Host "Fetching recent Telegram bot chats..." -ForegroundColor Cyan
+    $updates = Get-TelegramUpdates -BotToken $BotToken
+
+    if (-not $updates.ok -or -not $updates.result -or $updates.result.Count -eq 0) {
+        Write-Host "No recent chats found. Send /start to the bot in Telegram, then run this script again." -ForegroundColor Red
+        exit 1
+    }
+
+    $updates.result |
+        ForEach-Object {
+            $message = if ($_.message) { $_.message } elseif ($_.channel_post) { $_.channel_post } else { $null }
+            if ($message -and $message.chat) {
+                [PSCustomObject]@{
+                    ChatId = $message.chat.id
+                    Type = $message.chat.type
+                    Title = $message.chat.title
+                    Username = $message.chat.username
+                    FirstName = $message.chat.first_name
+                }
+            }
+        } |
+        Sort-Object ChatId -Unique |
+        Format-Table -AutoSize
+
+    return Read-Host "Copy one ChatId from above and paste it here"
+}
+
 Set-Location $RepoRoot
 
 Write-Host ""
@@ -75,39 +125,21 @@ try {
 Write-Host ""
 Write-Host "Create a Telegram bot with @BotFather, then send /start to that bot." -ForegroundColor Yellow
 $secureBotToken = Read-Host "Paste Telegram bot token" -AsSecureString
-$botToken = ConvertTo-PlainText $secureBotToken
+$botToken = (ConvertTo-PlainText $secureBotToken).Trim()
+
+if ($botToken -notmatch "^\d+:[A-Za-z0-9_-]{20,}$") {
+    Write-Host ""
+    Write-Host "The Telegram bot token format looks wrong." -ForegroundColor Red
+    Write-Host "Paste the full token from @BotFather, like 1234567890:AA..." -ForegroundColor Yellow
+    throw "Invalid Telegram bot token format."
+}
 
 Write-Host ""
 Write-Host "If you do not know the chat ID, leave this blank and the script will show recent bot chats."
 $chatId = Read-Host "Telegram chat ID"
 
 if ([string]::IsNullOrWhiteSpace($chatId)) {
-    Write-Host ""
-    Write-Host "Fetching recent Telegram bot chats..." -ForegroundColor Cyan
-    $updates = Invoke-RestMethod -Method Get -Uri "https://api.telegram.org/bot$botToken/getUpdates"
-
-    if (-not $updates.ok -or -not $updates.result -or $updates.result.Count -eq 0) {
-        Write-Host "No recent chats found. Send /start to the bot in Telegram, then run this script again." -ForegroundColor Red
-        exit 1
-    }
-
-    $updates.result |
-        ForEach-Object {
-            $message = if ($_.message) { $_.message } elseif ($_.channel_post) { $_.channel_post } else { $null }
-            if ($message -and $message.chat) {
-                [PSCustomObject]@{
-                    ChatId = $message.chat.id
-                    Type = $message.chat.type
-                    Title = $message.chat.title
-                    Username = $message.chat.username
-                    FirstName = $message.chat.first_name
-                }
-            }
-        } |
-        Sort-Object ChatId -Unique |
-        Format-Table -AutoSize
-
-    $chatId = Read-Host "Copy one ChatId from above and paste it here"
+    $chatId = Show-TelegramChats -BotToken $botToken
 }
 
 if ([string]::IsNullOrWhiteSpace($chatId)) {
@@ -121,32 +153,7 @@ while ($chatId.Trim() -notmatch "^-?\d+$") {
     $chatId = Read-Host "Telegram chat ID"
 
     if ([string]::IsNullOrWhiteSpace($chatId)) {
-        Write-Host ""
-        Write-Host "Fetching recent Telegram bot chats..." -ForegroundColor Cyan
-        $updates = Invoke-RestMethod -Method Get -Uri "https://api.telegram.org/bot$botToken/getUpdates"
-
-        if (-not $updates.ok -or -not $updates.result -or $updates.result.Count -eq 0) {
-            Write-Host "No recent chats found. Send /start to the bot in Telegram, then run this script again." -ForegroundColor Red
-            exit 1
-        }
-
-        $updates.result |
-            ForEach-Object {
-                $message = if ($_.message) { $_.message } elseif ($_.channel_post) { $_.channel_post } else { $null }
-                if ($message -and $message.chat) {
-                    [PSCustomObject]@{
-                        ChatId = $message.chat.id
-                        Type = $message.chat.type
-                        Title = $message.chat.title
-                        Username = $message.chat.username
-                        FirstName = $message.chat.first_name
-                    }
-                }
-            } |
-            Sort-Object ChatId -Unique |
-            Format-Table -AutoSize
-
-        $chatId = Read-Host "Copy one ChatId from above and paste it here"
+        $chatId = Show-TelegramChats -BotToken $botToken
     }
 }
 
