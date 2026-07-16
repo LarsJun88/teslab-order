@@ -1222,8 +1222,7 @@ if (extraImgsContainer) {
 
     if (prod.extraImgs && prod.extraImgs.trim().length > 0) {
         const imgLinks = prod.extraImgs
-            .split(/[
-,]/)
+            .split(/[\r\n,]+/)
             .map(url => url.trim())
             .filter(Boolean);
 
@@ -2142,8 +2141,7 @@ if (extraImgsContainer) {
             return;
         }
 
-        const options = optionsRaw.split('
-').map(o => o.trim()).filter(Boolean);
+        const options = optionsRaw.split(/\r?\n/).map(o => o.trim()).filter(Boolean);
 
         if (options.length === 0) {
             showToast("❌ 최소 1개 이상의 옵션을 입력해 주세요.");
