@@ -572,7 +572,7 @@
 </div>
 
 <!-- Review Auth Gate modal -->
-<div id="review-auth-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
+<div id="review-auth-modal" class="fixed inset-0 bg-slate-955/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
         <div class="flex justify-between items-center">
             <h4 class="font-extrabold text-slate-900 text-sm">구매 이력 인증</h4>
@@ -1140,7 +1140,7 @@
                     <p class="text-xs text-slate-400 truncate">${prod.desc || ''}</p>
                     <div class="flex items-center justify-between pt-1">
                         <span class="text-sm font-black text-slate-955">${Number(prod.price || 0).toLocaleString()}원</span>
-                        <span class="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded">옵션지원</span>
+                        <span class="text-[10px] text-indigo-600 font-bold bg-indigo-50/70 px-2 py-1 rounded">옵션지원</span>
                     </div>
                 </div>
             </div>
@@ -1170,7 +1170,7 @@
         imgEl.style.cursor = "zoom-in";
         imgEl.onclick = () => openLightbox(prod.img, `${prod.name} 대표 이미지`);
         imgEl.onerror = () => {
-            imgEl.src = 'https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop';
+            imgEl.src = 'https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=300&auto=format&fit=crop';
         };
 
         const selectEl = document.getElementById('detail-opt-select');
