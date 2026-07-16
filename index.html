@@ -84,7 +84,7 @@
         <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>제작 파츠 전시관
+                    <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>제품 LIST
                 </h2>
                 <span class="text-xs text-slate-400">상품 클릭 시 상세 보기</span>
             </div>
@@ -1031,6 +1031,8 @@
     let activeDetailQty = 1;
     let selectedInteractiveRating = 5;
     let verifiedReviewerProfile = null;
+    let draggedProductIndex = null;
+    let draggedExtraImageIndex = null;
 
     try {
         app = initializeApp(firebaseConfig);
@@ -2085,19 +2087,22 @@
         }
 
         container.innerHTML = products.map((prod, idx) => `
-            <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-4 text-xs">
-                <div class="flex items-center gap-3">
-                    <img src="${prod.img || ''}" class="w-12 h-12 object-cover rounded-lg border bg-white" onerror="this.src='https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop'">
-                    <div>
-                        <span class="font-mono text-indigo-600 font-bold block">${prod.itemNo || ''}</span>
-                        <strong class="text-slate-800 text-sm font-bold block">${prod.name || ''}</strong>
+            <div data-product-row="${idx}" ondragover="allowProductDrop(event, ${idx})" ondragleave="clearProductDrop(event)" ondrop="dropProduct(event, ${idx})" class="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-4 text-xs transition">
+                <div class="flex items-center gap-3 min-w-0">
+                    <img src="${escapeHtml(prod.img || '')}" class="w-12 h-12 object-cover rounded-lg border bg-white shrink-0" onerror="this.src='https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop'">
+                    <div class="min-w-0">
+                        <span class="font-mono text-indigo-600 font-bold block">${escapeHtml(prod.itemNo || '')}</span>
+                        <strong class="text-slate-800 text-sm font-bold block truncate">${escapeHtml(prod.name || '')}</strong>
                         <p class="text-[11px] text-slate-500">${Number(prod.price || 0).toLocaleString()}원 | 옵션 ${prod.options ? prod.options.length : 0}개</p>
                     </div>
                 </div>
 
-                <div class="flex gap-2">
+                <div class="flex gap-2 items-center shrink-0">
                     <button type="button" onclick="openEditProductModal(${idx})" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition">수정</button>
                     <button type="button" onclick="deleteProductConfig('${prod.id}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold transition">삭제</button>
+                    <button type="button" draggable="true" ondragstart="startProductDrag(event, ${idx})" ondragend="endProductDrag(event)" title="드래그해서 순서 변경" class="w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing transition">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
                 </div>
             </div>
         `).join('');
@@ -2112,6 +2117,84 @@
             "'": '&#39;'
         }[char]));
     }
+
+    function moveArrayItem(items, fromIndex, toIndex) {
+        const nextItems = [...items];
+        const [movedItem] = nextItems.splice(fromIndex, 1);
+        nextItems.splice(toIndex, 0, movedItem);
+        return nextItems;
+    }
+
+    function applyProductsOrder(updatedProducts) {
+        products = updatedProducts;
+        localProducts = updatedProducts;
+        localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+        renderAdminProducts();
+        renderProductsUI();
+    }
+
+    async function saveProductOrderConfig(previousProducts) {
+        if (isDemoMode) {
+            showToast("✅ 상품 순서가 변경되었습니다.");
+            return true;
+        }
+
+        try {
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            await setDoc(catalogDocRef, { products });
+            showToast("✅ 상품 순서가 저장되었습니다.");
+            return true;
+        } catch (err) {
+            console.error("Product order save failed.", err);
+            applyProductsOrder(previousProducts);
+            showToast("❌ 상품 순서 저장 실패");
+            return false;
+        }
+    }
+
+    window.startProductDrag = function(event, index) {
+        draggedProductIndex = index;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(index));
+
+        const row = event.currentTarget.closest('[data-product-row]');
+        if (row) row.classList.add('opacity-60');
+    };
+
+    window.allowProductDrop = function(event, index) {
+        if (draggedProductIndex === null || draggedProductIndex === index) return;
+
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        event.currentTarget.classList.add('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.clearProductDrop = function(event) {
+        event.currentTarget.classList.remove('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.dropProduct = async function(event, targetIndex) {
+        event.preventDefault();
+        window.clearProductDrop(event);
+
+        const transferredIndex = event.dataTransfer.getData('text/plain');
+        const fromIndex = transferredIndex !== '' ? Number(transferredIndex) : draggedProductIndex;
+        draggedProductIndex = null;
+
+        if (!Number.isInteger(fromIndex) || fromIndex === targetIndex || fromIndex < 0 || targetIndex < 0) return;
+        if (fromIndex >= products.length || targetIndex >= products.length) return;
+
+        const previousProducts = [...products];
+        const updatedProducts = moveArrayItem(products, fromIndex, targetIndex);
+        applyProductsOrder(updatedProducts);
+        await saveProductOrderConfig(previousProducts);
+    };
+
+    window.endProductDrag = function(event) {
+        draggedProductIndex = null;
+        const row = event.currentTarget.closest('[data-product-row]');
+        if (row) row.classList.remove('opacity-60');
+    };
 
     function getExtraImageUrls() {
         const textarea = document.getElementById('edit-prod-extra-imgs');
@@ -2153,7 +2236,7 @@
             const fileLabel = url.split('/').pop()?.split('?')[0] || url;
 
             return `
-                <div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                <div data-extra-img-row="${index}" ondragover="allowExtraImageDrop(event, ${index})" ondragleave="clearExtraImageDrop(event)" ondrop="dropExtraImage(event, ${index})" class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 transition">
                     <div class="w-12 h-12 rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0">
                         <img src="${escapedUrl}" alt="" class="w-full h-full object-cover" onerror="this.style.display='none'">
                     </div>
@@ -2161,15 +2244,12 @@
                         <span class="block text-[10px] font-black text-indigo-600">상세 이미지 ${index + 1}</span>
                         <span class="block truncate text-[10px] font-mono text-slate-500" title="${escapedUrl}">${escapeHtml(fileLabel)}</span>
                     </div>
-                    <div class="grid grid-cols-3 gap-1 shrink-0">
-                        <button type="button" onclick="moveExtraImage(${index}, -1)" title="위로 이동" ${index === 0 ? 'disabled' : ''} class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition">
-                            <i class="fa-solid fa-chevron-up"></i>
-                        </button>
-                        <button type="button" onclick="moveExtraImage(${index}, 1)" title="아래로 이동" ${index === urls.length - 1 ? 'disabled' : ''} class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition">
-                            <i class="fa-solid fa-chevron-down"></i>
-                        </button>
+                    <div class="flex gap-1 shrink-0">
                         <button type="button" onclick="removeExtraImage(${index})" title="삭제" class="w-8 h-8 rounded-lg border border-rose-100 bg-white text-rose-500 hover:bg-rose-50 transition">
                             <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                        <button type="button" draggable="true" ondragstart="startExtraImageDrag(event, ${index})" ondragend="endExtraImageDrag(event)" title="드래그해서 순서 변경" class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing transition">
+                            <i class="fa-solid fa-bars"></i>
                         </button>
                     </div>
                 </div>
@@ -2177,14 +2257,46 @@
         }).join('');
     };
 
-    window.moveExtraImage = function(index, direction) {
+    window.startExtraImageDrag = function(event, index) {
+        draggedExtraImageIndex = index;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(index));
+
+        const row = event.currentTarget.closest('[data-extra-img-row]');
+        if (row) row.classList.add('opacity-60');
+    };
+
+    window.allowExtraImageDrop = function(event, index) {
+        if (draggedExtraImageIndex === null || draggedExtraImageIndex === index) return;
+
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        event.currentTarget.classList.add('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.clearExtraImageDrop = function(event) {
+        event.currentTarget.classList.remove('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.dropExtraImage = function(event, targetIndex) {
+        event.preventDefault();
+        window.clearExtraImageDrop(event);
+
         const urls = getExtraImageUrls();
-        const targetIndex = index + direction;
+        const transferredIndex = event.dataTransfer.getData('text/plain');
+        const fromIndex = transferredIndex !== '' ? Number(transferredIndex) : draggedExtraImageIndex;
+        draggedExtraImageIndex = null;
 
-        if (targetIndex < 0 || targetIndex >= urls.length) return;
+        if (!Number.isInteger(fromIndex) || fromIndex === targetIndex || fromIndex < 0 || targetIndex < 0) return;
+        if (fromIndex >= urls.length || targetIndex >= urls.length) return;
 
-        [urls[index], urls[targetIndex]] = [urls[targetIndex], urls[index]];
-        setExtraImageUrls(urls);
+        setExtraImageUrls(moveArrayItem(urls, fromIndex, targetIndex));
+    };
+
+    window.endExtraImageDrag = function(event) {
+        draggedExtraImageIndex = null;
+        const row = event.currentTarget.closest('[data-extra-img-row]');
+        if (row) row.classList.remove('opacity-60');
     };
 
     window.removeExtraImage = function(index) {
