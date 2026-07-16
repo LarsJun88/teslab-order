@@ -62,6 +62,35 @@ function Get-TelegramUpdates {
     }
 }
 
+function Test-TelegramBotToken {
+    param(
+        [string]$BotToken
+    )
+
+    try {
+        $botInfo = Invoke-RestMethod -Method Get -Uri "https://api.telegram.org/bot$BotToken/getMe"
+    } catch {
+        Write-Host ""
+        Write-Host "Telegram rejected this bot token." -ForegroundColor Red
+        Write-Host "Most common causes:" -ForegroundColor Yellow
+        Write-Host "- You pasted only part of the token."
+        Write-Host "- You pasted the bot username, such as teslab_order_alert_bot."
+        Write-Host "- The token was revoked in @BotFather."
+        Write-Host "- Extra hidden characters were copied with the token."
+        Write-Host ""
+        Write-Host "Copy the token again from @BotFather. It must look like 1234567890:AA..." -ForegroundColor Yellow
+        throw
+    }
+
+    if (-not $botInfo.ok -or -not $botInfo.result) {
+        throw "Telegram bot token validation failed."
+    }
+
+    Write-Host ""
+    Write-Host "Telegram bot token is valid." -ForegroundColor Green
+    Write-Host ("Bot username: @{0}" -f $botInfo.result.username)
+}
+
 function Show-TelegramChats {
     param(
         [string]$BotToken
@@ -133,6 +162,8 @@ if ($botToken -notmatch "^\d+:[A-Za-z0-9_-]{20,}$") {
     Write-Host "Paste the full token from @BotFather, like 1234567890:AA..." -ForegroundColor Yellow
     throw "Invalid Telegram bot token format."
 }
+
+Test-TelegramBotToken -BotToken $botToken
 
 Write-Host ""
 Write-Host "If you do not know the chat ID, leave this blank and the script will show recent bot chats."
