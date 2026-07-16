@@ -939,7 +939,7 @@
             const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
 
             // 신규 비밀번호: bbjh9132!! 의 SHA-256 해시값 지정
-            const defaultHash = "9a572a15c324c45a6c3f3fa54e580e608df9c8b7ab6c78119bf522e8eb084a9e";
+            const defaultHash = "6080fc41ca9310da4a4cbc54052c79d89f8bea0cdaf2b3f121a7f9ff5e8584ef";
 
             try {
                 // 데이터베이스 보안검증 업그레이드 로직
@@ -1144,7 +1144,7 @@
         // 🔒 [완전 복구 보장 핵심 로직] 구글 Firestore 데이터베이스와 상관없이 기기 자체적으로 bbjh9132!! 비밀번호를 우선 대조하여 100% 로그인 통과시킵니다.
         window.authenticateAdmin = async function() {
             const passwordInput = document.getElementById('admin_key').value;
-            const defaultHash = "9a572a15c324c45a6c3f3fa54e580e608df9c8b7ab6c78119bf522e8eb084a9e"; // bbjh9132!!
+            const defaultHash = "6080fc41ca9310da4a4cbc54052c79d89f8bea0cdaf2b3f121a7f9ff5e8584ef"; // 관리자 비밀번호 해시
 
             try {
                 const enteredHash = await sha256(passwordInput);
