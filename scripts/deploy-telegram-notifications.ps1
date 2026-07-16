@@ -105,7 +105,7 @@ function Show-TelegramChats {
         exit 1
     }
 
-    $updates.result |
+    $chatRows = $updates.result |
         ForEach-Object {
             $message = if ($_.message) { $_.message } elseif ($_.channel_post) { $_.channel_post } else { $null }
             if ($message -and $message.chat) {
@@ -118,8 +118,9 @@ function Show-TelegramChats {
                 }
             }
         } |
-        Sort-Object ChatId -Unique |
-        Format-Table -AutoSize
+        Sort-Object ChatId -Unique
+
+    $chatRows | Format-Table -AutoSize | Out-Host
 
     return Read-Host "Copy one ChatId from above and paste it here"
 }
@@ -170,7 +171,7 @@ Write-Host "If you do not know the chat ID, leave this blank and the script will
 $chatId = Read-Host "Telegram chat ID"
 
 if ([string]::IsNullOrWhiteSpace($chatId)) {
-    $chatId = Show-TelegramChats -BotToken $botToken
+    $chatId = [string](Show-TelegramChats -BotToken $botToken)
 }
 
 if ([string]::IsNullOrWhiteSpace($chatId)) {
@@ -184,7 +185,7 @@ while ($chatId.Trim() -notmatch "^-?\d+$") {
     $chatId = Read-Host "Telegram chat ID"
 
     if ([string]::IsNullOrWhiteSpace($chatId)) {
-        $chatId = Show-TelegramChats -BotToken $botToken
+        $chatId = [string](Show-TelegramChats -BotToken $botToken)
     }
 }
 
