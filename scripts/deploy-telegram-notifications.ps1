@@ -196,9 +196,16 @@ Set-FirebaseSecretFromValue -Name "TELEGRAM_CHAT_ID" -Value $chatId.Trim()
 
 Write-Host ""
 Write-Host "Deploying Cloud Function..." -ForegroundColor Cyan
-npx firebase-tools deploy --only functions:notifyTelegramOnOrderCreated --project $ProjectId
+$deployLog = Join-Path $RepoRoot "firebase-deploy.log"
+npx firebase-tools deploy --only functions:notifyTelegramOnOrderCreated --project $ProjectId --debug 2>&1 |
+    Tee-Object -FilePath $deployLog
+
 if ($LASTEXITCODE -ne 0) {
-    throw "Firebase function deploy failed."
+    Write-Host ""
+    Write-Host "Firebase function deploy failed." -ForegroundColor Red
+    Write-Host "Full deploy log saved to: $deployLog" -ForegroundColor Yellow
+    Write-Host "Open that file and check the last error block, or paste the last 40 lines here." -ForegroundColor Yellow
+    throw "Firebase function deploy failed. See firebase-deploy.log"
 }
 
 Write-Host ""

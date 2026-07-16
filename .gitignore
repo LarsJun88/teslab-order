@@ -3,4 +3,5 @@ node_modules/
 .runtimeconfig.json
 firebase-debug.log
 firebase-debug.*.log
+firebase-deploy.log
 functions/node_modules/
