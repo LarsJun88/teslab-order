@@ -686,7 +686,7 @@
 
             <div>
                 <label class="block font-bold text-slate-600 mb-1">옵션 목록</label>
-                <textarea id="edit-prod-options" rows="3" placeholder="블랙&#10;레드&#10;신형 (+5,000원)" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono"></textarea>
+                <textarea id="edit-prod-options" rows="3" placeholder="블랙&#10;레드&#10;신형 (+5,000원)&#10;할인형 (-2,000원)" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono"></textarea>
             </div>
 
             <div class="space-y-1 mt-3">
@@ -1102,10 +1102,11 @@
     function parseExtraCost(optionString) {
         if (!optionString) return 0;
 
-        const match = optionString.match(/\(\+([\d,]+)원\)/);
+        const match = optionString.match(/\(([+-])\s*([\d,]+)원\)/);
 
         if (match) {
-            return parseInt(match[1].replace(/,/g, ''), 10);
+            const sign = match[1] === '-' ? -1 : 1;
+            return sign * parseInt(match[2].replace(/,/g, ''), 10);
         }
 
         return 0;
