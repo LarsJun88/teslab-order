@@ -1,0 +1,1996 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>롸쓰의 테슬랩 - 회원 전용 구매 센터</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Daum Postcode API for Real Address Search -->
+    <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: #f1f5f9;
+        }
+        .tab-active {
+            border-bottom-color: #4f46e5;
+            color: #4f46e5;
+            font-weight: 700;
+        }
+        .img-zoom {
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .img-zoom:hover {
+            transform: scale(1.03);
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Global Header / Navigation -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-4xl mx-auto px-4 flex items-center justify-between h-16">
+            <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-sm">TL</span>
+                <span class="font-extrabold text-slate-900 tracking-tight text-lg">롸쓰의 테슬랩</span>
+            </div>
+            <nav class="flex h-full gap-1">
+                <button onclick="switchTab('order-tab', 'view-order-form')" id="order-tab" class="px-3 sm:px-4 h-full border-b-2 border-transparent text-sm font-semibold text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5 tab-active">
+                    <i class="fa-solid fa-store"></i> 상품구매
+                </button>
+                <button onclick="switchTab('track-tab', 'view-track-order')" id="track-tab" class="px-3 sm:px-4 h-full border-b-2 border-transparent text-sm font-semibold text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-magnifying-glass"></i> 구매조회
+                </button>
+                <button onclick="switchTab('admin-tab', 'view-admin-dashboard')" id="admin-tab" class="px-3 sm:px-4 h-full border-b-2 border-transparent text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-user-gear"></i> 관리자모드
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-full max-w-sm px-4"></div>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-4xl w-full mx-auto px-4 py-6">
+
+        <!-- VIEW 1: ORDER FORM -->
+        <div id="view-order-form" class="space-y-6">
+            
+            <!-- Welcome Banner -->
+            <div class="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+                <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-indigo-600/20 rounded-full blur-2xl"></div>
+                <div class="relative z-10 space-y-1">
+                    <span class="bg-indigo-500 text-white text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">TKC Cafe Only</span>
+                    <h1 class="text-2xl font-black tracking-tight pt-1">롸쓰의 테슬랩 회원 전용 구매 센터</h1>
+                    <p class="text-xs text-slate-300">회원님들을 위해 고유 설계 및 정밀 제작된 프리미엄 순정 지향 커스텀 파츠입니다. 상품을 클릭하여 상세한 설명을 보고 장바구니에 편하게 담으세요.</p>
+                </div>
+            </div>
+
+            <!-- Dynamic Admin Notice Memo Section -->
+            <div id="user-notice-box" class="bg-indigo-50 border border-indigo-150 rounded-2xl p-4 flex gap-3 items-start animate-in fade-in duration-300">
+                <div class="bg-indigo-100 text-indigo-700 p-2 rounded-xl shrink-0">
+                    <i class="fa-solid fa-bullhorn text-sm sm:text-base animate-bounce"></i>
+                </div>
+                <div class="space-y-1">
+                    <h4 class="text-xs font-black text-indigo-900 tracking-wider">필독 유의사항 안내</h4>
+                    <p id="notice-text-display" class="text-xs text-indigo-950 leading-relaxed font-medium">유의사항 정보를 실시간으로 읽어오는 중입니다...</p>
+                </div>
+            </div>
+
+            <!-- Products List Section -->
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>제작 파츠 전시관
+                    </h2>
+                    <span class="text-xs text-slate-400"><i class="fa-solid fa-arrow-pointer mr-1"></i>상품을 누르면 상세 보기가 활성화됩니다</span>
+                </div>
+
+                <!-- Product Grid (Dynamic Multi-Product Layout) -->
+                <div id="dynamic-product-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="col-span-full text-center py-12 text-slate-400">
+                        <i class="fa-solid fa-spinner animate-spin text-2xl mb-2 text-indigo-500 block"></i>
+                        <span class="text-xs">상품 카탈로그를 불러오고 있습니다...</span>
+                    </div>
+                </div>
+
+                <!-- Live Cart Display -->
+                <div class="mt-6 border-t border-slate-100 pt-5">
+                    <h4 class="text-xs font-bold text-slate-400 mb-3 tracking-wider uppercase">장바구니 담긴 명세서</h4>
+                    <div id="selected-options-container" class="space-y-2">
+                        <div id="cart-blank-state" class="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                            <i class="fa-solid fa-basket-shopping text-slate-300 text-2xl mb-1.5 block"></i>
+                            <p class="text-xs text-slate-400 font-medium">선택된 품목이 없습니다. 마음에 드는 상품의 상세페이지에서 장바구니에 담아주세요.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Order Inputs Form -->
+            <form id="orderForm" onsubmit="handleFormSubmit(event)" class="space-y-6">
+                
+                <!-- Orderer Info -->
+                <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>1. 주문자 정보
+                    </h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label for="orderer_name" class="block text-xs font-semibold text-slate-500 mb-1.5">이름 <span class="text-rose-500">*</span></label>
+                            <input type="text" id="orderer_name" required placeholder="예: 홍길동" oninput="syncShippingInfo()" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition">
+                        </div>
+                        <div>
+                            <label for="orderer_phone" class="block text-xs font-semibold text-slate-500 mb-1.5">연락처 <span class="text-rose-500">*</span></label>
+                            <input type="tel" id="orderer_phone" required placeholder="예: 010-1234-5678" oninput="syncShippingInfo(); formatPhoneNumber(this);" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition">
+                        </div>
+                        <div>
+                            <label for="orderer_nickname" class="block text-xs font-semibold text-slate-500 mb-1.5">TKC 카페 닉네임 <span class="text-rose-500">*</span></label>
+                            <input type="text" id="orderer_nickname" required placeholder="예: 닉네임12" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition">
+                        </div>
+                        <div>
+                            <label for="orderer_car_info" class="block text-xs font-semibold text-slate-500 mb-1.5">차량 정보 <span class="text-rose-500">*</span></label>
+                            <input type="text" id="orderer_car_info" required placeholder="예시: 26년 모델YL" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Shipping Info -->
+                <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>2. 배송지 정보
+                        </h2>
+                        <label class="flex items-center gap-2 text-xs font-medium text-slate-500 cursor-pointer select-none bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 hover:bg-slate-100 transition">
+                            <input type="checkbox" id="sync-checkbox" onchange="toggleSyncShipping(this)" class="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-4 h-4">
+                            주문자와 동일
+                        </label>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="ship_name" class="block text-xs font-semibold text-slate-500 mb-1.5">받는 사람 성함 <span class="text-rose-500">*</span></label>
+                                <input type="text" id="ship_name" required placeholder="수령인 성명" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition">
+                            </div>
+                            <div>
+                                <label for="ship_phone" class="block text-xs font-semibold text-slate-500 mb-1.5">연락처 <span class="text-rose-500">*</span></label>
+                                <input type="tel" id="ship_phone" required placeholder="010-xxxx-xxxx" oninput="formatPhoneNumber(this)" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition">
+                            </div>
+                        </div>
+
+                        <!-- Real Daum Postcode Search Elements -->
+                        <div class="space-y-2">
+                            <label class="block text-xs font-semibold text-slate-500">배송 주소 입력 <span class="text-rose-500">*</span></label>
+                            
+                            <div class="flex gap-2">
+                                <input type="text" id="postal_code" readonly placeholder="우편번호" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition w-32 cursor-not-allowed font-mono">
+                                <button type="button" onclick="execDaumPostcode()" class="rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-98 transition text-white px-4 py-3 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5">
+                                    <i class="fa-solid fa-map-location-dot"></i> 우편번호 찾기
+                                </button>
+                                <button type="button" onclick="enableManualAddress()" class="rounded-xl bg-slate-200 text-slate-700 hover:bg-slate-300 transition px-3 py-3 text-xs font-medium whitespace-nowrap">
+                                    직접 입력
+                                </button>
+                            </div>
+                            
+                            <input type="text" id="address_basic" readonly placeholder="기본 주소 (검색 시 자동 입력)" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition cursor-not-allowed">
+                            <input type="text" id="address_detail" required placeholder="상세 주소(동·호수 및 상세 건물명)를 입력하세요" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition">
+                        </div>
+
+                        <!-- Island / Mountainous shipping surcharge box -->
+                        <div class="p-3 bg-amber-50/50 rounded-xl border border-amber-200/60 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-ship text-amber-500 text-lg"></i>
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-800 block">제주 및 도서산간 배송</span>
+                                    <span class="text-[10px] text-slate-500">도서산간 지역은 추가 배송비 3,000원이 가산됩니다.</span>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="island-toggle" onchange="toggleIslandShipping()" class="sr-only peer">
+                                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                            </label>
+                        </div>
+
+                        <!-- Shipping memo -->
+                        <div>
+                            <label for="shipping_memo" class="block text-xs font-semibold text-slate-500 mb-1.5">배송 시 요청사항</label>
+                            <input type="text" id="shipping_memo" placeholder="예: 문 앞에 놓아주세요 / 배송 전 연락 바랍니다." class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 outline-none transition">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Payment Information (Bank Transfer Only) -->
+                <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>3. 결제 수단 안내
+                    </h2>
+
+                    <div class="bg-slate-50 rounded-xl border border-slate-150 p-4 space-y-4">
+                        <div class="flex items-center gap-2 pb-3 border-b border-slate-200/60">
+                            <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold">안내</span>
+                            <span class="text-xs text-slate-500">본 주문서는 무통장 수기 입금으로만 매칭 처리됩니다.</span>
+                        </div>
+                        
+                        <!-- Account Box -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-lg border border-slate-200">
+                            <div class="space-y-1">
+                                <span class="text-[10px] font-bold text-indigo-600 block uppercase tracking-wider">입금 하실 계좌</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-extrabold text-sm sm:text-base text-slate-800" id="bank-acc-info">카카오뱅크 3333-31-7244898</span>
+                                    <span class="font-semibold text-xs text-slate-500">배준호</span>
+                                </div>
+                            </div>
+                            <button type="button" onclick="copyBankAccount()" class="self-start sm:self-auto px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1">
+                                <i class="fa-solid fa-copy"></i> 계좌 복사
+                            </button>
+                        </div>
+
+                        <div>
+                            <label for="depositor_name" class="block text-xs font-semibold text-slate-500 mb-1.5">실제 입금자 성함 <span class="text-rose-500">*</span></label>
+                            <input type="text" id="depositor_name" required placeholder="입금증명 확인을 위해 반드시 실명 기재" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-indigo-500 outline-none transition">
+                            <p class="text-[10px] text-amber-600 mt-1.5">※ 주문자명 및 실제 송금자명이 다르면 대조 과정이 지체될 수 있으니 꼭 주의 바랍니다.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Terms and Agreements -->
+                <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>4. 개인정보 수집 및 동의
+                    </h2>
+                    
+                    <div class="space-y-3">
+                        <label class="flex items-start gap-3 p-3 bg-slate-50 hover:bg-slate-100/70 rounded-xl transition cursor-pointer select-none">
+                            <input type="checkbox" id="agree-all" onchange="toggleAgreeAll(this)" class="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-4.5 h-4.5">
+                            <div class="text-xs">
+                                <span class="font-bold text-slate-700 block text-sm">모든 필수 동의 사항에 동의합니다.</span>
+                                <span class="text-slate-400">신청서 진행용 정보 수집 목적에 승인합니다.</span>
+                            </div>
+                        </label>
+
+                        <div class="space-y-2.5 px-1 pt-1">
+                            <div class="flex items-center justify-between text-xs text-slate-500">
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="agree-privacy" class="agree-item rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-4 h-4">
+                                    <span class="font-medium">개인정보 수집 및 이용 동의 <span class="text-rose-500">(필수)</span></span>
+                                </label>
+                                <button type="button" onclick="openModal('modal-privacy')" class="text-slate-400 underline hover:text-slate-600 transition">약관보기</button>
+                            </div>
+
+                            <div class="flex items-center justify-between text-xs text-slate-500">
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="agree-thirdparty" class="agree-item rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-4 h-4">
+                                    <span class="font-medium">개인정보 제3자(배송사) 제공 동의 <span class="text-rose-500">(필수)</span></span>
+                                </label>
+                                <button type="button" onclick="openModal('modal-thirdparty')" class="text-slate-400 underline hover:text-slate-600 transition">약관보기</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Sticky Pricing & Submit Box -->
+                <div class="bg-white rounded-2xl shadow-md border border-slate-100 p-5 sm:p-6">
+                    <div class="space-y-2 mb-4">
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="text-slate-500">선택한 품목 총액</span>
+                            <span class="font-bold text-slate-700" id="summary-product-total">0원</span>
+                        </div>
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="text-slate-500">배송비 (기본 배송)</span>
+                            <span class="font-bold text-slate-700" id="summary-shipping-fee">4,000원</span>
+                        </div>
+                        <div class="border-t border-slate-100 pt-3 flex justify-between items-center">
+                            <span class="text-slate-800 font-extrabold text-base">최종 합계 금액</span>
+                            <span class="text-2xl font-black text-indigo-600" id="summary-final-total">0원</span>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-98 transition-all text-white font-extrabold py-4 rounded-xl text-center shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-paper-plane"></i> 주문 완료 및 내역서 전송
+                    </button>
+                </div>
+                
+            </form>
+        </div>
+
+        <!-- VIEW 2: ORDER TRACKING LOOKUP -->
+        <div id="view-track-order" class="space-y-6 hidden">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6 max-w-xl mx-auto">
+                <div class="text-center space-y-2 mb-6">
+                    <div class="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto text-xl">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-slate-900">회원 전용 구매 조회</h2>
+                    <p class="text-xs text-slate-400">주문서 작성 시 등록하셨던 성함과 연락처를 입력해 주세요.</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label for="track_name" class="block text-xs font-semibold text-slate-500 mb-1.5">주문자 성함</label>
+                        <input type="text" id="track_name" placeholder="홍길동" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 outline-none transition">
+                    </div>
+                    <div>
+                        <label for="track_phone" class="block text-xs font-semibold text-slate-500 mb-1.5">연락처 (- 포함 또는 숫자만)</label>
+                        <input type="tel" id="track_phone" oninput="formatPhoneNumber(this)" placeholder="010-1234-5678" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 outline-none transition">
+                    </div>
+                    <button type="button" onclick="lookupOrder()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl text-sm transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-arrow-right-to-bracket"></i> 나의 구매 명세서 조회하기
+                    </button>
+                </div>
+
+                <!-- Query Result Display Block -->
+                <div id="track-result-container" class="mt-8 border-t border-slate-100 pt-6 hidden space-y-4"></div>
+            </div>
+        </div>
+
+        <!-- VIEW 3: ADMIN DASHBOARD -->
+        <div id="view-admin-dashboard" class="space-y-6 hidden">
+            
+            <!-- Credentials Shield -->
+            <div id="admin-auth-panel" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 max-w-sm mx-auto text-center space-y-4">
+                <i class="fa-solid fa-lock text-rose-500 text-3xl"></i>
+                <div>
+                    <h3 class="font-bold text-slate-800 text-base">테슬랩 운영진 보안검증</h3>
+                    <p class="text-[11px] text-slate-400 mt-1">안전한 데이터 처리를 위해 관리자 비밀번호가 요구됩니다.</p>
+                    <p class="text-[10px] text-indigo-600 mt-0.5">기본 비밀번호: <strong class="underline">admin123</strong></p>
+                </div>
+                <input type="password" id="admin_key" placeholder="비밀번호 입력" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm outline-none focus:border-indigo-500">
+                <button onclick="authenticateAdmin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    보안 인증 및 대시보드 진입
+                </button>
+            </div>
+
+            <!-- Dashboard Contents -->
+            <div id="admin-content-panel" class="hidden space-y-6">
+                
+                <!-- Admin Tab Navigation -->
+                <div class="flex border-b border-slate-200 bg-white p-2 rounded-xl shadow-sm gap-2">
+                    <button onclick="switchAdminSubTab('orders')" id="subtab-orders" class="flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition">
+                        <i class="fa-solid fa-rectangle-list mr-1.5"></i> 주문 신청서 관리
+                    </button>
+                    <button onclick="switchAdminSubTab('products')" id="subtab-products" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition">
+                        <i class="fa-solid fa-tags mr-1.5"></i> 구성품 및 공지 관리
+                    </button>
+                </div>
+
+                <!-- ADMIN SECTION 1: ORDERS LIST -->
+                <div id="admin-section-orders" class="space-y-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 block uppercase">총 주문 건수</span>
+                                <span class="text-xl font-extrabold text-slate-800" id="stat-total-orders">0건</span>
+                            </div>
+                            <i class="fa-solid fa-clipboard-list text-indigo-500 text-xl bg-indigo-50 p-2.5 rounded-lg"></i>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 block uppercase">누적 총 구매액</span>
+                                <span class="text-xl font-extrabold text-slate-800" id="stat-total-sales">0원</span>
+                            </div>
+                            <i class="fa-solid fa-won-sign text-emerald-500 text-xl bg-emerald-50 p-2.5 rounded-lg"></i>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 block uppercase">제주 배송지</span>
+                                <span class="text-xl font-extrabold text-slate-800" id="stat-island-count">0건</span>
+                            </div>
+                            <i class="fa-solid fa-ship text-amber-500 text-xl bg-amber-50 p-2.5 rounded-lg"></i>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 block uppercase">입금 대기건</span>
+                                <span class="text-xl font-extrabold text-slate-800" id="stat-pending-orders">0건</span>
+                            </div>
+                            <i class="fa-solid fa-hourglass-half text-rose-500 text-xl bg-rose-50 p-2.5 rounded-lg"></i>
+                        </div>
+                    </div>
+
+                    <!-- Admin Action and Data Table -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-base">테슬랩 회원 전용 구매 원본 리스트</h3>
+                                <p class="text-xs text-slate-400">데이터베이스 동기화 기반의 안전한 실시간 관리 시트입니다.</p>
+                            </div>
+                            <button onclick="downloadExcelCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10">
+                                <i class="fa-solid fa-file-excel"></i> 엑셀용 CSV 파일 다운로드
+                            </button>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-400 font-bold text-[10px] sm:text-xs uppercase border-b border-slate-100">
+                                        <th class="p-4">주문번호 / 일시</th>
+                                        <th class="p-4">신청자 (닉네임 / 차량)</th>
+                                        <th class="p-4">선택 품목 일람</th>
+                                        <th class="p-4">최종금액 (입금자)</th>
+                                        <th class="p-4">배송 주소 / 요청</th>
+                                        <th class="p-4 text-center">주문 상태 & 송장 등록</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
+                                    <tr>
+                                        <td colspan="6" class="p-8 text-center text-slate-400">데이터를 불러오는 중입니다...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ADMIN SECTION 2: PRODUCTS & MEMO MANAGER -->
+                <div id="admin-section-products" class="space-y-6 hidden">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                        <h3 class="font-bold text-slate-900 text-base mb-1">회원 유의사항/메모 공지 설정</h3>
+                        <p class="text-xs text-slate-400 mb-4">상품 리스트 최상단에 상시 표기되는 알림 문구를 즉시 수정합니다.</p>
+                        <div class="space-y-3">
+                            <textarea id="admin-notice-input" rows="3" class="w-full rounded-xl border border-slate-200 p-3 text-xs focus:border-indigo-500 outline-none transition font-medium text-slate-700" placeholder="안내 문구를 적어주세요."></textarea>
+                            <div class="flex justify-end">
+                                <button type="button" onclick="saveNoticeConfig()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition">
+                                    <i class="fa-solid fa-floppy-disk mr-1"></i> 유의사항 공지사항 변경 및 실시간 저장
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-base">테슬랩 상품 카탈로그 실시간 편집기</h3>
+                                <p class="text-xs text-slate-400">여기서 품목 정보를 추가/삭제 시 메인 몰 페이지에 즉시 적용됩니다.</p>
+                            </div>
+                            <button type="button" onclick="openAddProductModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
+                                <i class="fa-solid fa-plus"></i> 신규 품목 추가
+                            </button>
+                        </div>
+
+                        <div id="admin-products-container" class="space-y-3"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+
+    <!-- SHOPPING MALL STYLE: Dynamic Product Detail Overlay Modal -->
+    <div id="detail-page-modal" class="fixed inset-0 bg-slate-955/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <span class="text-xs font-bold text-indigo-600" id="detail-item-no">ITEM 01</span>
+                <button type="button" onclick="closeProductDetailModal()" class="p-2 rounded-xl hover:bg-slate-200 transition text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="overflow-y-auto p-6 space-y-6 flex-grow">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        <div class="aspect-square rounded-2xl border border-slate-150 overflow-hidden bg-slate-50 shadow-inner">
+                            <img id="detail-img" src="" alt="" class="w-full h-full object-cover">
+                        </div>
+                        <p class="text-[10px] text-slate-400 text-center"><i class="fa-solid fa-circle-info mr-1"></i>본 이미지는 연출된 예시용 사진입니다.</p>
+                    </div>
+
+                    <div class="space-y-4 flex flex-col justify-between">
+                        <div class="space-y-2">
+                            <h3 id="detail-title" class="font-extrabold text-slate-900 text-lg sm:text-xl leading-snug">상품명</h3>
+                            <p id="detail-desc" class="text-xs text-slate-500 leading-relaxed">상세 설명</p>
+                            <div class="py-2.5 border-y border-slate-100 flex items-baseline justify-between">
+                                <span class="text-xs text-slate-400 font-bold">기본 판매단가</span>
+                                <span class="text-xl font-black text-slate-950" id="detail-price">15,000원</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div>
+                                <label class="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">옵션 선택</label>
+                                <select id="detail-opt-select" onchange="calculateDetailMockPrice()" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-indigo-500 outline-none transition cursor-pointer">
+                                    <option value="">-- 옵션을 선택해 주세요 --</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">주문 수량</span>
+                                <div class="flex items-center border border-slate-200 bg-white rounded-lg p-0.5">
+                                    <button type="button" onclick="adjustDetailQty(-1)" class="px-2 py-0.5 text-slate-500 hover:bg-slate-50 font-bold">-</button>
+                                    <span id="detail-qty-display" class="px-3 text-xs font-bold text-slate-700 min-w-[1.5rem] text-center">1</span>
+                                    <button type="button" onclick="adjustDetailQty(1)" class="px-2 py-0.5 text-slate-500 hover:bg-slate-50 font-bold">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-baseline justify-between px-1">
+                            <span class="text-xs text-slate-500 font-bold">합산 추정액</span>
+                            <span class="text-lg font-black text-indigo-600" id="detail-total-cost">15,000원</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-100 pt-6">
+                    <div class="flex border-b border-slate-200 text-xs font-bold gap-4 mb-4">
+                        <button type="button" onclick="switchDetailTab('desc')" id="detail-tab-desc" class="pb-2 border-b-2 border-indigo-600 text-indigo-600">제작 파츠 상세 스펙</button>
+                        <button type="button" onclick="switchDetailTab('policy')" id="detail-tab-policy" class="pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-700">배송 및 환불규정</button>
+                    </div>
+                    <div id="detail-tab-content-desc" class="text-xs text-slate-600 space-y-2.5 leading-relaxed animate-in fade-in">
+                        <p><i class="fa-solid fa-check text-indigo-500 mr-1.5"></i><strong>롸쓰의 테슬랩 전용 3D 가공 공정</strong>으로 미세 단차마저 완벽 대응 처리하여 완성도를 정점으로 끌어올렸습니다.</p>
+                        <p><i class="fa-solid fa-check text-indigo-500 mr-1.5"></i>내구성이 탁월한 프리미엄 내열성 친환경 소재를 베이스로 사용하여 한여름 극고온의 차량 내부에서도 형상 틀어짐이나 유해 냄새 분출이 일절 없습니다.</p>
+                    </div>
+                    <div id="detail-tab-content-policy" class="text-xs text-slate-600 space-y-2.5 leading-relaxed hidden animate-in fade-in">
+                        <p><i class="fa-solid fa-truck text-amber-500 mr-1.5"></i><strong>안내사항:</strong> 전 제품은 주문 신청 확인 이후 개별 맞춤 제작 방식으로 전향되어 포장 출고됩니다.</p>
+                        <p><i class="fa-solid fa-arrows-rotate text-amber-500 mr-1.5"></i>회원 1:1 오더 주문 제품 특성상 발주 완료 이후의 중도 환불은 어려우며, 제품 하자의 경우 7일 이내 새 제품 무상 교환을 적극 진행해 드립니다.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-150 flex gap-2 shrink-0">
+                <button type="button" onclick="closeProductDetailModal()" class="flex-1 bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl text-xs transition">
+                    쇼핑 계속하기
+                </button>
+                <button type="button" onclick="addActiveProductToCart()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/15">
+                    <i class="fa-solid fa-cart-shopping"></i> 장바구니 담기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer block -->
+    <footer class="bg-slate-900 text-slate-400 text-center py-6 mt-12 border-t border-slate-800 text-xs">
+        <p class="font-bold text-slate-200">TKC CAFE 부산T롸쓰</p>
+        <p class="mt-1">All design elements & simulated database connections are structured for local client verification.</p>
+    </footer>
+
+    <!-- Lightbox Modal -->
+    <div id="lightbox" class="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4 hidden" onclick="closeLightbox()">
+        <button class="absolute top-4 right-4 text-white hover:text-slate-300 text-2xl transition">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+        <img id="lightbox-img" src="" alt="확대 이미지" class="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-150">
+        <h4 id="lightbox-caption" class="text-white text-sm font-bold mt-4 tracking-wide text-center">제품명</h4>
+    </div>
+
+    <!-- Privacy Policies Modals -->
+    <div id="modal-privacy" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+            <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 text-sm">개인정보 수집 및 이용 동의</h3>
+                <button type="button" onclick="closeModal('modal-privacy')" class="p-1 rounded-lg hover:bg-slate-200 transition text-slate-400">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-5 max-h-80 overflow-y-auto text-xs text-slate-500 space-y-2.5 leading-relaxed">
+                <p class="font-bold text-slate-700">1. 수집 항목</p>
+                <p>주문자 정보 (이름, 연락처, 카페 닉네임, 차량사양 정보), 수령인 정보 (이름, 연락처, 배송주소), 결제 증빙 확인용 입금자 성함.</p>
+                <p class="font-bold text-slate-700">2. 수집 및 이용목적</p>
+                <p>회원 식별, 차량 옵션에 맞춤형 가공 제작, 제품 배송 수령지 확인, 배송 상태 안내 및 사후 고객 관리.</p>
+                <p class="font-bold text-slate-700">3. 보유 및 이용기간</p>
+                <p class="text-indigo-600 font-bold">주문 완료 및 제작 완료일로부터 1년간 안전하게 위탁 보관 후 완벽 파기합니다.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-thirdparty" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+            <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 text-sm">개인정보 제3자 제공 동의</h3>
+                <button type="button" onclick="closeModal('modal-thirdparty')" class="p-1 rounded-lg hover:bg-slate-200 transition text-slate-400">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-5 max-h-80 overflow-y-auto text-xs text-slate-500 space-y-2.5 leading-relaxed">
+                <p class="font-bold text-slate-700">1. 제공받는 자</p>
+                <p>배송 대행 우체국택배, CJ대한통운 및 관련 택배 물류사</p>
+                <p class="font-bold text-slate-700">2. 제공하는 항목</p>
+                <p>수령인의 성함, 연락처, 상세 배송지 주소, 배송 메모사항</p>
+                <p class="font-bold text-slate-700">3. 제공받는 자의 목적</p>
+                <p>회원 전용 구매 제작 완료 물품 전송 및 배송 서비스 제공</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit/Add Product Modal -->
+    <div id="product-edit-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <h3 id="product-modal-title" class="font-bold text-slate-800 text-sm">신규 품목 추가</h3>
+                <button type="button" onclick="closeModal('product-edit-modal')" class="p-1 rounded-lg hover:bg-slate-200 transition text-slate-400">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-3 max-h-[70vh] overflow-y-auto text-xs">
+                <input type="hidden" id="edit-prod-id">
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">상품 번호 (예: ITEM 01)</label>
+                    <input type="text" id="edit-prod-itemno" placeholder="ITEM 04" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">상품명</label>
+                    <input type="text" id="edit-prod-name" placeholder="상품 이름" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">상품 설명</label>
+                    <input type="text" id="edit-prod-desc" placeholder="상세 상세 스펙" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">기본 가격 (숫자만)</label>
+                    <input type="number" id="edit-prod-price" placeholder="12000" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">대표 이미지 URL</label>
+                    <input type="text" id="edit-prod-img" placeholder="https://images.unsplash.com/..." class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">옵션 목록 (줄바꿈으로 구분)</label>
+                    <textarea id="edit-prod-options" rows="4" placeholder="레드&#10;블루&#10;네온 (+1,500원)" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono"></textarea>
+                    <span class="text-[10px] text-slate-400">옵션에 금액을 추가하려면 옵션명 뒤에 " (+1,000원)" 등의 포맷을 정확히 붙여주세요.</span>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 text-xs">
+                <button type="button" onclick="closeModal('product-edit-modal')" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition">취소</button>
+                <button type="button" onclick="saveProductConfig()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold">품목 저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Success Receipt Popup Modal -->
+    <div id="success-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div class="bg-indigo-600 p-6 text-white text-center">
+                <div class="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mx-auto mb-3 text-xl">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <h3 class="text-lg font-bold">주문 완료 및 전송 성공!</h3>
+                <p class="text-xs text-indigo-100 mt-1">회원님의 소중한 제작 파츠 정보가 수령 접수되었습니다.</p>
+            </div>
+            
+            <div class="p-5 max-h-[60vh] overflow-y-auto space-y-4 text-xs">
+                <div class="border-b border-dashed border-slate-200 pb-3">
+                    <span class="text-[10px] text-slate-400 block uppercase font-bold">고유 주문코드 (조회용 키)</span>
+                    <span class="text-sm font-extrabold text-slate-800 font-mono tracking-tight" id="receipt-order-id">-</span>
+                </div>
+
+                <div>
+                    <span class="text-[10px] text-slate-400 block mb-1 font-bold">선택 품목 및 옵션 내역</span>
+                    <div id="receipt-items-container" class="space-y-1.5 bg-slate-50 p-3 rounded-lg border border-slate-100"></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <span class="text-[10px] text-slate-400 block font-bold">주문자 성함</span>
+                        <span class="font-bold text-slate-700" id="receipt-orderer-name">-</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-slate-400 block font-bold">TKC 카페 닉네임 / 차량 정보</span>
+                        <span class="font-bold text-indigo-700 block" id="receipt-orderer-nick">-</span>
+                    </div>
+                    <div class="col-span-2">
+                        <span class="text-[10px] text-slate-400 block font-bold">수령지 주소</span>
+                        <span class="font-bold text-slate-700" id="receipt-address">-</span>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-100 pt-3 space-y-1.5">
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">실제 입금자 예정자</span>
+                        <span class="font-bold text-slate-700" id="receipt-depositor">-</span>
+                    </div>
+                    <div class="flex justify-between items-baseline border-t border-slate-100 pt-2.5 mt-1">
+                        <span class="font-bold text-slate-800">최종 송금 금액</span>
+                        <span class="text-lg font-black text-indigo-600" id="receipt-price">-</span>
+                    </div>
+                    
+                    <div class="p-3 bg-indigo-50 border border-indigo-100 text-indigo-900 rounded-lg space-y-1">
+                        <span class="font-bold block text-[11px]"><i class="fa-solid fa-building-columns mr-1"></i>입금 계좌 안내:</span>
+                        <p class="font-extrabold text-xs">카카오뱅크 3333-31-7244898 배준호</p>
+                        <p class="text-[10px] text-indigo-600 font-semibold pt-0.5">※ 입금자 명칭 매치 시 순차 생산 및 수기 검수가 시작됩니다.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+                <button type="button" onclick="closeSuccessModal()" class="w-full bg-slate-900 hover:bg-slate-800 transition text-white py-3 rounded-xl font-bold text-xs tracking-wider">
+                    확인 및 창 닫기
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Firebase core logic module -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ==========================================
+        // 📌 여기에 구글 파이어베이스에서 발급받은 키값을 대입해주세요!
+        // ==========================================
+        const __firebase_config = `{
+            "apiKey": "AIzaSyAGqFb_3nbwIShXC5VYX0ZPwtQGnVw0ytI",
+            "authDomain": "teslab-order-center.firebaseapp.com",
+            "projectId": "teslab-order-center",
+            "storageBucket": "teslab-order-center.firebasestorage.app",
+            "messagingSenderId": "972346711312",
+            "appId": "1:972346711312:web:ebae056e23cf4d815d9995"
+        }`;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tkc-co-order-2026';
+        
+        let app = null;
+        let auth = null;
+        let db = null;
+        let isDemoMode = false;
+
+        let localOrders = [];
+        let localNotice = "필독사항: 본 전용 파츠는 100% 한정 맞춤제작 파츠로, 입금 확인 이후 주 2회 일괄 실시간 공정 제작에 돌입합니다.";
+        
+        let localProducts = [
+            {
+                id: "p1",
+                itemNo: "ITEM 01",
+                name: "분리방지 문구 잠금링",
+                desc: "블랙 및 레드 정밀 핏 아노다이징 코팅 처리 방지링",
+                price: 7000,
+                img: "https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=300&auto=format&fit=crop",
+                options: ["블랙", "레드"]
+            },
+            {
+                id: "p2",
+                itemNo: "ITEM 02",
+                name: "도어도크 콤보",
+                desc: "스마트 고정과 거치를 위한 일체형 멀티 콤보 세트",
+                price: 22000,
+                img: "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=300&auto=format&fit=crop",
+                options: ["구형", "신형", "받침대포함 구형 (+5,000원)", "받침대포함 신형 (+7,000원)"]
+            },
+            {
+                id: "p3",
+                itemNo: "ITEM 03",
+                name: "도어도크 완속",
+                desc: "차량 도어가 부드럽게 고정되도록 완화해주는 순정 체결 파츠",
+                price: 15000,
+                img: "https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?q=80&w=300&auto=format&fit=crop",
+                options: ["기본형"]
+            },
+            {
+                id: "p4",
+                itemNo: "ITEM 04",
+                name: "벨트클립 로고형",
+                desc: "고유 로고 포인트 음각 가공으로 스포티함을 가미한 클립",
+                price: 2000,
+                img: "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?q=80&w=300&auto=format&fit=crop",
+                options: ["블랙", "레드"]
+            },
+            {
+                id: "p5",
+                itemNo: "ITEM 05",
+                name: "벨트클립 심플형",
+                desc: "미니멀하고 가벼운 데일리 순정 무드 벨트 클립",
+                price: 1000,
+                img: "https://images.unsplash.com/photo-1616422285623-13ff0162193c?q=80&w=300&auto=format&fit=crop",
+                options: ["블랙", "레드"]
+            },
+            {
+                id: "p6",
+                itemNo: "ITEM 06",
+                name: "섹시버튼 홀더 일반형",
+                desc: "물리 버튼 인터페이스와 매끄러운 단차 피팅이 완성된 마운트",
+                price: 20000,
+                img: "https://images.unsplash.com/photo-1550009158-9ebf6d2d130f?q=80&w=300&auto=format&fit=crop",
+                options: ["블랙", "화이트"]
+            },
+            {
+                id: "p7",
+                itemNo: "ITEM 07",
+                name: "섹시버튼 홀더 수평형",
+                desc: "수평형 대시보드 구조에 견고하게 연장 체결되는 전용 거치 파츠",
+                price: 24000,
+                img: "https://images.unsplash.com/photo-1600541519463-ee3745293257?q=80&w=300&auto=format&fit=crop",
+                options: ["블랙", "화이트"]
+            },
+            {
+                id: "p8",
+                itemNo: "ITEM 08",
+                name: "섹시버튼 홀더 센터형",
+                desc: "정중앙 송풍구 밑 무선 충전 영역에 최적화된 최신 마운트 홀더",
+                price: 12000,
+                img: "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=300&auto=format&fit=crop",
+                options: ["기본형"]
+            },
+            {
+                id: "p9",
+                itemNo: "ITEM 09",
+                name: "벨트클립 홀더",
+                desc: "차량용 시트 및 마운트 부속과 완벽히 호환되는 정돈형 홀더",
+                price: 5000,
+                img: "https://images.unsplash.com/photo-1506015391300-4802dc74de2e?q=80&w=300&auto=format&fit=crop",
+                options: ["기본형"]
+            },
+            {
+                id: "p10",
+                itemNo: "ITEM 10",
+                name: "방향제 홀더",
+                desc: "강력한 송풍 마운트 클립 기반의 이탈 방지형 디퓨저 서포터",
+                price: 4000,
+                img: "https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=300&auto=format&fit=crop",
+                options: ["기본형"]
+            },
+            {
+                id: "p11",
+                itemNo: "ITEM 11",
+                name: "타이어 밸브캡",
+                desc: "미세 공기압 누기 방지 패킹이 포함된 포인트 메탈 밸브캡 세트",
+                price: 5000,
+                img: "https://images.unsplash.com/photo-1580273916550-e323be2ae537?q=80&w=300&auto=format&fit=crop",
+                options: ["블랙", "화이트"]
+            },
+            {
+                id: "p12",
+                itemNo: "ITEM 12",
+                name: "타이어 밸브캡 리무버",
+                desc: "고착된 밸브캡을 휠 긁힘 상처 없이 안전하게 풀어내는 정밀 공구",
+                price: 4000,
+                img: "https://images.unsplash.com/photo-1530124566582-a61a1275b1ae?q=80&w=300&auto=format&fit=crop",
+                options: ["기본형"]
+            },
+            {
+                id: "p13",
+                itemNo: "ITEM 13",
+                name: "에어팟 받침대",
+                desc: "테슬라 센터 수납함 전용 깊이 단차 극복 거치 베이스",
+                price: 5000,
+                img: "https://images.unsplash.com/photo-1588449668338-d134ac2c36d5?q=80&w=300&auto=format&fit=crop",
+                options: ["기본형"]
+            },
+            {
+                id: "p14",
+                itemNo: "ITEM 14",
+                name: "갤럭시 받침대",
+                desc: "갤럭시 스마트폰 및 스마트워치를 충전 패드에 흔들림 없이 잡아주는 피팅 가이드",
+                price: 5000,
+                img: "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?q=80&w=300&auto=format&fit=crop",
+                options: ["블랙", "화이트"]
+            }
+        ];
+
+        // Safe Initialization Block
+        try {
+            const configObj = JSON.parse(__firebase_config);
+            if (!configObj || !configObj.apiKey) {
+                throw new Error("No config");
+            }
+            app = initializeApp(configObj);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (err) {
+            console.warn("⚠️ Firebase Offline Mode Active.", err);
+            isDemoMode = true;
+        }
+
+        let currentUser = null;
+        let globalOrders = []; 
+        let products = [];     
+        let isAdminAuthenticated = false;
+
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function runAuth() {
+            if (isDemoMode) {
+                products = localProducts;
+                renderProductsUI();
+                renderNoticeUI(localNotice);
+                return;
+            }
+
+            try {
+                let userCredential;
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    userCredential = await signInAnonymously(auth);
+                }
+                currentUser = userCredential.user;
+                await initCatalogAndNotice();
+            } catch (err) {
+                console.error("Firebase Authentication bypassed (Auto fallback to Demo Mode):", err);
+                isDemoMode = true;
+                products = localProducts;
+                renderProductsUI();
+                renderNoticeUI(localNotice);
+            }
+        }
+
+        async function initCatalogAndNotice() {
+            if (isDemoMode) return;
+
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
+            const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
+
+            try {
+                const securitySnap = await getDoc(securityDocRef);
+                if (!securitySnap.exists()) {
+                    const defaultHash = "240751a029312108d447d2b25712e5ebf89a910bf2f28fb87a9307f0bb50da45"; 
+                    await setDoc(securityDocRef, { adminHash: defaultHash });
+                }
+
+                const noticeSnap = await getDoc(noticeDocRef);
+                if (noticeSnap.exists()) {
+                    localNotice = noticeSnap.data().text || localNotice;
+                } else {
+                    await setDoc(noticeDocRef, { text: localNotice });
+                }
+                renderNoticeUI(localNotice);
+
+                const snap = await getDoc(catalogDocRef);
+                if (snap.exists()) {
+                    products = snap.data().products || [];
+                    if (products.length < 5) {
+                        await setDoc(catalogDocRef, { products: localProducts });
+                        products = localProducts;
+                    }
+                } else {
+                    await setDoc(catalogDocRef, { products: localProducts });
+                    products = localProducts;
+                }
+                renderProductsUI();
+            } catch (err) {
+                console.error("Firestore configurations fetch failed. Using local presets:", err);
+                products = localProducts;
+                renderProductsUI();
+                renderNoticeUI(localNotice);
+            }
+        }
+
+        function renderNoticeUI(text) {
+            document.getElementById('notice-text-display').textContent = text;
+            document.getElementById('admin-notice-input').value = text;
+        }
+
+        function renderProductsUI() {
+            const listContainer = document.getElementById('dynamic-product-list');
+            if (products.length === 0) {
+                listContainer.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400">등록된 파츠가 존재하지 않습니다.</div>`;
+                return;
+            }
+
+            listContainer.innerHTML = products.map((prod) => `
+                <div class="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group" onclick="openProductDetailModal('${prod.id}')">
+                    <div class="relative aspect-[4/3] bg-slate-50 border-b border-slate-50 overflow-hidden shrink-0">
+                        <img src="${prod.img}" alt="${prod.name}" class="w-full h-full object-cover img-zoom" onerror="this.src='https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=300&auto=format&fit=crop'">
+                        <span class="absolute top-2.5 left-2.5 bg-slate-900/80 backdrop-blur-sm text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${prod.itemNo}</span>
+                        <div class="absolute inset-0 bg-slate-955/40 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center">
+                            <span class="bg-white text-slate-955 text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5 transform translate-y-2 group-hover:translate-y-0 transition duration-300">
+                                <i class="fa-solid fa-magnifying-glass"></i> 상세스펙 보기
+                            </span>
+                        </div>
+                    </div>
+                    <div class="p-4 space-y-1.5">
+                        <h3 class="font-bold text-slate-800 text-sm sm:text-base group-hover:text-indigo-600 transition leading-tight">${prod.name}</h3>
+                        <p class="text-xs text-slate-400 truncate">${prod.desc}</p>
+                        <div class="flex items-center justify-between pt-1">
+                            <span class="text-sm font-black text-slate-955">${prod.price.toLocaleString()}원</span>
+                            <span class="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded">옵션지원</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        let activeProduct = null;
+        let activeDetailQty = 1;
+
+        window.openProductDetailModal = function(prodId) {
+            const prod = products.find(p => p.id === prodId);
+            if (!prod) return;
+
+            activeProduct = prod;
+            activeDetailQty = 1;
+
+            document.getElementById('detail-item-no').textContent = prod.itemNo;
+            document.getElementById('detail-title').textContent = prod.name;
+            document.getElementById('detail-desc').textContent = prod.desc;
+            document.getElementById('detail-price').textContent = `${prod.price.toLocaleString()}원`;
+            
+            const imgEl = document.getElementById('detail-img');
+            imgEl.src = prod.img;
+            imgEl.onerror = () => { imgEl.src = 'https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=300&auto=format&fit=crop'; };
+
+            const selectEl = document.getElementById('detail-opt-select');
+            selectEl.innerHTML = `<option value="">-- 옵션을 선택해 주세요 --</option>` + 
+                prod.options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+
+            switchDetailTab('desc');
+            calculateDetailMockPrice();
+
+            document.getElementById('detail-page-modal').classList.remove('hidden');
+        }
+
+        window.closeProductDetailModal = function() {
+            document.getElementById('detail-page-modal').classList.add('hidden');
+            activeProduct = null;
+        }
+
+        window.switchDetailTab = function(tabName) {
+            const descBtn = document.getElementById('detail-tab-desc');
+            const policyBtn = document.getElementById('detail-tab-policy');
+            const descContent = document.getElementById('detail-tab-content-desc');
+            const policyContent = document.getElementById('detail-tab-content-policy');
+
+            if (tabName === 'desc') {
+                descBtn.className = "pb-2 border-b-2 border-indigo-600 text-indigo-600 font-bold";
+                policyBtn.className = "pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-700 font-bold";
+                descContent.classList.remove('hidden');
+                policyContent.classList.add('hidden');
+            } else {
+                policyBtn.className = "pb-2 border-b-2 border-indigo-600 text-indigo-600 font-bold";
+                descBtn.className = "pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-700 font-bold";
+                policyContent.classList.remove('hidden');
+                descContent.classList.add('hidden');
+            }
+        }
+
+        window.adjustDetailQty = function(delta) {
+            activeDetailQty += delta;
+            if (activeDetailQty < 1) activeDetailQty = 1;
+            document.getElementById('detail-qty-display').textContent = activeDetailQty;
+            calculateDetailMockPrice();
+        }
+
+        function parseExtraCost(optionString) {
+            const match = optionString.match(/\(\+([\d,]+)원\)/);
+            if (match) {
+                return parseInt(match[1].replace(/,/g, ''));
+            }
+            return 0;
+        }
+
+        window.calculateDetailMockPrice = function() {
+            if (!activeProduct) return;
+            const selectEl = document.getElementById('detail-opt-select');
+            const selectedVal = selectEl.value;
+
+            const extra = parseExtraCost(selectedVal);
+            const cost = (activeProduct.price + extra) * activeDetailQty;
+
+            document.getElementById('detail-total-cost').textContent = `${cost.toLocaleString()}원`;
+        }
+
+        window.addActiveProductToCart = function() {
+            if (!activeProduct) return;
+
+            const selectEl = document.getElementById('detail-opt-select');
+            const selectedVal = selectEl.value;
+
+            if (!selectedVal) {
+                showToast("⚠️ 주문하실 옵션을 먼저 선택해주시기 바랍니다.");
+                return;
+            }
+
+            const extra = parseExtraCost(selectedVal);
+            const finalUnitCost = activeProduct.price + extra;
+            const optionString = `${activeProduct.name} (${selectedVal.split(" (")[0]})`;
+
+            const existing = cart.find(item => item.optionName === optionString);
+            if (existing) {
+                existing.quantity += activeDetailQty;
+            } else {
+                cart.push({
+                    productId: activeProduct.id,
+                    optionName: optionString,
+                    unitPrice: finalUnitCost,
+                    quantity: activeDetailQty
+                });
+            }
+
+            renderCartUI();
+            calculateCartTotals();
+            closeProductDetailModal();
+            showToast("🛒 장바구니에 상품을 안전하게 담았습니다.");
+        }
+
+        window.adjustProductRowQty = function(prodId, delta) {
+            const input = document.getElementById(`prod-qty-${prodId}`);
+            let val = parseInt(input.value) + delta;
+            if (val < 1) val = 1;
+            input.value = val;
+        }
+
+        window.authenticateAdmin = async function() {
+            const passwordInput = document.getElementById('admin_key').value;
+
+            if (isDemoMode) {
+                const enteredHash = await sha256(passwordInput);
+                const defaultHash = "240751a029312108d447d2b25712e5ebf89a910bf2f28fb87a9307f0bb50da45"; 
+                if (enteredHash === defaultHash) {
+                    isAdminAuthenticated = true;
+                    document.getElementById('admin-auth-panel').classList.add('hidden');
+                    document.getElementById('admin-content-panel').classList.remove('hidden');
+                    showToast("🔑 관리자 데모 보안검증 완료!");
+                    loadAdminOrders();
+                    renderAdminProducts();
+                } else {
+                    showToast("❌ 비밀번호가 일치하지 않습니다.");
+                }
+                return;
+            }
+
+            const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
+
+            try {
+                const snap = await getDoc(securityDocRef);
+                let savedHash = "240751a029312108d447d2b25712e5ebf89a910bf2f28fb87a9307f0bb50da45"; 
+                if (snap.exists() && snap.data().adminHash) {
+                    savedHash = snap.data().adminHash;
+                }
+
+                const enteredHash = await sha256(passwordInput);
+
+                if (enteredHash === savedHash) {
+                    isAdminAuthenticated = true;
+                    document.getElementById('admin-auth-panel').classList.add('hidden');
+                    document.getElementById('admin-content-panel').classList.remove('hidden');
+                    showToast("🔑 운영진 인증이 통과되었습니다.");
+                    loadAdminOrders();
+                    renderAdminProducts();
+                } else {
+                    showToast("❌ 비밀번호 보안키가 틀립니다.");
+                }
+            } catch (err) {
+                console.error("Auth security fetch failed:", err);
+                showToast("❌ 인증 도중 통신 장애가 생겼습니다.");
+            }
+        }
+
+        window.saveNoticeConfig = async function() {
+            const newNoticeText = document.getElementById('admin-notice-input').value.trim();
+            if (!newNoticeText) {
+                showToast("❌ 필독 공지 내용은 공백으로 둘 수 없습니다.");
+                return;
+            }
+
+            if (isDemoMode) {
+                localNotice = newNoticeText;
+                renderNoticeUI(localNotice);
+                showToast("✅ [데모] 유의사항 공지문구가 로컬 임시 저장되었습니다.");
+                return;
+            }
+
+            const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
+            try {
+                await setDoc(noticeDocRef, { text: newNoticeText });
+                localNotice = newNoticeText;
+                renderNoticeUI(localNotice);
+                showToast("✅ 유의사항 안내 공지가 클라우드에 영구 반영되었습니다.");
+            } catch (err) {
+                console.error("Notice config write failed:", err);
+                showToast("❌ 공지 저장 중 장애가 일어났습니다.");
+            }
+        }
+
+        window.switchAdminSubTab = function(subtab) {
+            if (!isAdminAuthenticated) return;
+            const ordersBtn = document.getElementById('subtab-orders');
+            const productsBtn = document.getElementById('subtab-products');
+            const ordersSec = document.getElementById('admin-section-orders');
+            const productsSec = document.getElementById('admin-section-products');
+
+            if (subtab === 'orders') {
+                ordersBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
+                productsBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition";
+                ordersSec.classList.remove('hidden');
+                productsSec.classList.add('hidden');
+                loadAdminOrders();
+            } else {
+                productsBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
+                ordersBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition";
+                productsSec.classList.remove('hidden');
+                ordersSec.classList.add('hidden');
+                renderAdminProducts();
+            }
+        }
+
+        function renderAdminProducts() {
+            const container = document.getElementById('admin-products-container');
+            if (products.length === 0) {
+                container.innerHTML = `<div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl">상품 구성이 아직 없습니다. 품목을 더해주세요.</div>`;
+                return;
+            }
+
+            container.innerHTML = products.map((prod, idx) => `
+                <div class="p-4 bg-slate-50 rounded-xl border border-slate-150 flex items-center justify-between gap-4 text-xs">
+                    <div class="flex items-center gap-3">
+                        <img src="${prod.img}" class="w-12 h-12 object-cover rounded-lg border bg-white" onerror="this.src='https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=300&auto=format&fit=crop'">
+                        <div>
+                            <span class="font-mono text-indigo-600 font-bold block">${prod.itemNo}</span>
+                            <strong class="text-slate-800 text-sm font-bold block">${prod.name}</strong>
+                            <p class="text-[11px] text-slate-500">${prod.price.toLocaleString()}원 | 옵션수: ${prod.options.length}개</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="openEditProductModal(${idx})" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition">수정</button>
+                        <button type="button" onclick="deleteProductConfig('${prod.id}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold transition">삭제</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.openAddProductModal = function() {
+            document.getElementById('product-modal-title').textContent = "신규 품목 추가";
+            document.getElementById('edit-prod-id').value = "";
+            document.getElementById('edit-prod-itemno').value = `ITEM 0${products.length + 1}`;
+            document.getElementById('edit-prod-name').value = "";
+            document.getElementById('edit-prod-desc').value = "";
+            document.getElementById('edit-prod-price').value = "";
+            document.getElementById('edit-prod-img').value = "";
+            document.getElementById('edit-prod-options').value = "";
+            openModal('product-edit-modal');
+        }
+
+        window.openEditProductModal = function(index) {
+            const prod = products[index];
+            document.getElementById('product-modal-title').textContent = "품목 수정";
+            document.getElementById('edit-prod-id').value = prod.id;
+            document.getElementById('edit-prod-itemno').value = prod.itemNo;
+            document.getElementById('edit-prod-name').value = prod.name;
+            document.getElementById('edit-prod-desc').value = prod.desc;
+            document.getElementById('edit-prod-price').value = prod.price;
+            document.getElementById('edit-prod-img').value = prod.img;
+            document.getElementById('edit-prod-options').value = prod.options.join('\n');
+            openModal('product-edit-modal');
+        }
+
+        window.deleteProductConfig = async function(prodId) {
+            if (!confirm("⚠️ 정말 이 상품 파츠를 삭제할까요?")) return;
+            
+            const updatedProds = products.filter(p => p.id !== prodId);
+
+            if (isDemoMode) {
+                localProducts = updatedProds;
+                products = updatedProds;
+                showToast("🗑/🗑 [데모] 품목이 가상 메모리에서 삭제되었습니다.");
+                renderAdminProducts();
+                renderProductsUI();
+                return;
+            }
+
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            try {
+                await setDoc(catalogDocRef, { products: updatedProds });
+                products = updatedProds;
+                showToast("🗑️ 품목이 성공적으로 영구 삭제되었습니다.");
+                renderAdminProducts();
+                renderProductsUI();
+            } catch (err) {
+                console.error("Delete product error:", err);
+                showToast("❌ 상품 삭제 중 오류 발생");
+            }
+        }
+
+        window.saveProductConfig = async function() {
+            const editId = document.getElementById('edit-prod-id').value;
+            const itemno = document.getElementById('edit-prod-itemno').value.trim();
+            const name = document.getElementById('edit-prod-name').value.trim();
+            const desc = document.getElementById('edit-prod-desc').value.trim();
+            const price = parseInt(document.getElementById('edit-prod-price').value);
+            const img = document.getElementById('edit-prod-img').value.trim();
+            const optionsRaw = document.getElementById('edit-prod-options').value.trim();
+
+            if (!itemno || !name || isNaN(price)) {
+                showToast("❌ 필수 정보가 누락되었습니다.");
+                return;
+            }
+
+            const options = optionsRaw.split('\n').map(o => o.trim()).filter(o => o.length > 0);
+            if (options.length === 0) {
+                showToast("❌ 최소 1줄 이상의 옵션을 기입해주세요.");
+                return;
+            }
+
+            let updatedList = [...products];
+            if (editId) {
+                updatedList = updatedList.map(p => {
+                    if (p.id === editId) {
+                        return { ...p, itemNo: itemno, name, desc, price, img, options };
+                    }
+                    return p;
+                });
+            } else {
+                const newId = `p_${Date.now()}`;
+                updatedList.push({ id: newId, itemNo: itemno, name, desc, price, img, options });
+            }
+
+            if (isDemoMode) {
+                localProducts = updatedList;
+                products = updatedList;
+                showToast("✅ [데모] 카탈로그가 임시 업데이트되었습니다.");
+                closeModal('product-edit-modal');
+                renderAdminProducts();
+                renderProductsUI();
+                return;
+            }
+
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            try {
+                await setDoc(catalogDocRef, { products: updatedList });
+                products = updatedList;
+                showToast("✅ 상품 구성 목록이 동기화 및 업로드 되었습니다.");
+                closeModal('product-edit-modal');
+                renderAdminProducts();
+                renderProductsUI();
+            } catch (err) {
+                console.error("Catalog write failure:", err);
+                showToast("❌ 저장 도중 문제가 발생했습니다.");
+            }
+        }
+
+        await runAuth();
+
+        const shippingDefault = 4000;
+        let isIslandShipping = false;
+        let cart = [];
+
+        window.updateCartQty = function(index, delta) {
+            cart[index].quantity += delta;
+            if (cart[index].quantity < 1) cart[index].quantity = 1;
+            renderCartUI();
+            calculateCartTotals();
+        }
+
+        window.removeCartItem = function(index) {
+            cart.splice(index, 1);
+            renderCartUI();
+            calculateCartTotals();
+            showToast("🗑️ 장바구니 품목을 삭제했습니다.");
+        }
+
+        function renderCartUI() {
+            const container = document.getElementById('selected-options-container');
+            if (cart.length === 0) {
+                container.innerHTML = `
+                    <div id="cart-blank-state" class="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                        <i class="fa-solid fa-basket-shopping text-slate-300 text-2xl mb-1.5 block"></i>
+                        <p class="text-xs text-slate-400 font-medium">선택된 품목이 없습니다. 마음에 드는 상품의 상세페이지에서 장바구니에 담아주세요.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = cart.map((item, idx) => `
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between animate-in slide-in-from-top-1">
+                    <div class="space-y-1">
+                        <span class="text-xs font-bold text-slate-800 block">${item.optionName}</span>
+                        <span class="text-[11px] font-medium text-slate-400">${item.unitPrice.toLocaleString()}원</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center border border-slate-200 bg-white rounded-lg overflow-hidden">
+                            <button type="button" onclick="updateCartQty(${idx}, -1)" class="px-2 py-0.5 text-slate-500 hover:bg-slate-100 font-bold">-</button>
+                            <span class="px-2.5 text-xs font-bold text-slate-700 min-w-[1.5rem] text-center">${item.quantity}</span>
+                            <button type="button" onclick="updateCartQty(${idx}, 1)" class="px-2 py-0.5 text-slate-500 hover:bg-slate-100 font-bold">+</button>
+                        </div>
+                        <button type="button" onclick="removeCartItem(${idx})" class="p-1.5 text-slate-400 hover:text-rose-500 rounded transition">
+                            <i class="fa-solid fa-trash-can text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function calculateCartTotals() {
+            const productSum = cart.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
+            let shippingCost = cart.length > 0 ? shippingDefault : 0;
+            
+            if (cart.length > 0 && isIslandShipping) {
+                shippingCost += 3000;
+            }
+
+            const total = productSum + shippingCost;
+
+            document.getElementById('summary-product-total').textContent = `${productSum.toLocaleString()}원`;
+            document.getElementById('summary-shipping-fee').textContent = cart.length === 0 ? "0원" : `${shippingCost.toLocaleString()}원`;
+            document.getElementById('summary-final-total').textContent = `${total.toLocaleString()}원`;
+        }
+
+        window.toggleIslandShipping = function() {
+            isIslandShipping = document.getElementById('island-toggle').checked;
+            calculateCartTotals();
+            showToast(isIslandShipping ? "🚢 제주 및 도서산간 배송비(+3,000원)가 설정되었습니다." : "제주 도서지역 배송비 추가가 해제되었습니다.");
+        }
+
+        window.execDaumPostcode = function() {
+            new daum.Postcode({
+                oncomplete: function(data) {
+                    let addr = '';
+                    if (data.userSelectedType === 'R') {
+                        addr = data.roadAddress;
+                    } else {
+                        addr = data.jibunAddress;
+                    }
+
+                    document.getElementById('postal_code').value = data.zonecode;
+                    document.getElementById('address_basic').value = addr;
+                    document.getElementById('address_detail').focus();
+
+                    const islandToggle = document.getElementById('island-toggle');
+                    if (data.zonecode.startsWith('63')) {
+                        islandToggle.checked = true;
+                        isIslandShipping = true;
+                        showToast("📍 제주 지역 감지로 추가 배송비가 자동 설정되었습니다.");
+                    } else {
+                        islandToggle.checked = false;
+                        isIslandShipping = false;
+                    }
+                    calculateCartTotals();
+                }
+            }).open();
+        }
+
+        window.enableManualAddress = function() {
+            const basicInput = document.getElementById('address_basic');
+            const postalInput = document.getElementById('postal_code');
+            basicInput.removeAttribute('readonly');
+            basicInput.classList.remove('bg-slate-50', 'cursor-not-allowed');
+            basicInput.placeholder = "도로명 또는 지번 주소 직접 입력";
+            
+            postalInput.removeAttribute('readonly');
+            postalInput.classList.remove('bg-slate-50', 'cursor-not-allowed');
+            postalInput.placeholder = "우편번호";
+            showToast("직접 기입 모드로 전환했습니다.");
+        }
+
+        window.toggleSyncShipping = function(checkbox) {
+            if (checkbox.checked) {
+                syncShippingInfo();
+            } else {
+                document.getElementById('ship_name').value = '';
+                document.getElementById('ship_phone').value = '';
+            }
+        }
+
+        window.syncShippingInfo = function() {
+            const isChecked = document.getElementById('sync-checkbox').checked;
+            if (isChecked) {
+                document.getElementById('ship_name').value = document.getElementById('orderer_name').value;
+                document.getElementById('ship_phone').value = document.getElementById('orderer_phone').value;
+            }
+        }
+
+        window.handleFormSubmit = async function(event) {
+            event.preventDefault();
+
+            if (cart.length === 0) {
+                showToast("❌ 최소 한 개 이상의 품목을 상세페이지에서 담아주십시오.");
+                return;
+            }
+
+            const agreePrivacy = document.getElementById('agree-privacy').checked;
+            const agreeThird = document.getElementById('agree-thirdparty').checked;
+            if (!agreePrivacy || !agreeThird) {
+                showToast("❌ 필수 약관에 동의하셔야만 안전한 주문이 완료됩니다.");
+                return;
+            }
+
+            const postalVal = document.getElementById('postal_code').value;
+            const basicAddr = document.getElementById('address_basic').value;
+            if (!postalVal || !basicAddr) {
+                showToast("❌ 배송 주소 지정을 완료해 주세요.");
+                return;
+            }
+
+            const date = new Date();
+            const year = String(date.getFullYear()).substring(2);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const rand = Math.floor(1000 + Math.random() * 9000);
+            const orderId = `ORD-${year}${month}${day}-${rand}`;
+
+            const productSum = cart.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
+            let finalShipping = shippingDefault;
+            if (isIslandShipping) finalShipping += 3000;
+            const totalSum = productSum + finalShipping;
+
+            const orderPayload = {
+                orderId: orderId,
+                timestamp: date.toISOString(),
+                createdAt: date.toLocaleString('ko-KR'),
+                ordererName: document.getElementById('orderer_name').value,
+                ordererPhone: document.getElementById('orderer_phone').value,
+                ordererNickname: document.getElementById('orderer_nickname').value,
+                ordererCarInfo: document.getElementById('orderer_car_info').value,
+                shipName: document.getElementById('ship_name').value,
+                shipPhone: document.getElementById('ship_phone').value,
+                postalCode: postalVal,
+                addressBasic: basicAddr,
+                addressDetail: document.getElementById('address_detail').value,
+                shippingMemo: document.getElementById('shipping_memo').value || "없음",
+                isIslandShipping: isIslandShipping,
+                depositorName: document.getElementById('depositor_name').value,
+                cart: cart,
+                productTotal: productSum,
+                shippingFee: finalShipping,
+                finalTotal: totalSum,
+                status: "입금대기", 
+                trackingNumber: "" 
+            };
+
+            if (isDemoMode) {
+                localOrders.push(orderPayload);
+                renderSuccessReceipt(orderPayload);
+                return;
+            }
+
+            try {
+                const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+                await setDoc(orderRef, orderPayload);
+                renderSuccessReceipt(orderPayload);
+            } catch (err) {
+                console.error("Firestore Writing Failed. Fallback storage:", err);
+                localOrders.push(orderPayload);
+                renderSuccessReceipt(orderPayload);
+            }
+        }
+
+        function renderSuccessReceipt(payload) {
+            document.getElementById('receipt-order-id').textContent = payload.orderId;
+            document.getElementById('receipt-orderer-name').textContent = payload.ordererName;
+            document.getElementById('receipt-orderer-nick').textContent = `${payload.ordererNickname} (${payload.ordererCarInfo})`;
+            document.getElementById('receipt-address').textContent = `[${payload.postalCode}] ${payload.addressBasic} ${payload.addressDetail}`;
+            document.getElementById('receipt-depositor').textContent = payload.depositorName;
+            document.getElementById('receipt-price').textContent = `${payload.finalTotal.toLocaleString()}원`;
+
+            const receiptContainer = document.getElementById('receipt-items-container');
+            receiptContainer.innerHTML = payload.cart.map(item => `
+                <div class="flex justify-between items-center text-slate-700">
+                    <span>${item.optionName} <strong class="text-indigo-600">x${item.quantity}</strong></span>
+                    <span class="font-semibold font-mono">${(item.unitPrice * item.quantity).toLocaleString()}원</span>
+                </div>
+            `).join('');
+
+            document.getElementById('success-modal').classList.remove('hidden');
+        }
+
+        window.closeSuccessModal = function() {
+            document.getElementById('success-modal').classList.add('hidden');
+            cart = [];
+            renderCartUI();
+            calculateCartTotals();
+            document.getElementById('orderForm').reset();
+            document.getElementById('sync-checkbox').checked = false;
+            document.getElementById('island-toggle').checked = false;
+            isIslandShipping = false;
+            calculateCartTotals();
+            switchTab('track-tab', 'view-track-order');
+        }
+
+        window.lookupOrder = async function() {
+            const trackName = document.getElementById('track_name').value.trim();
+            const trackPhone = document.getElementById('track_phone').value.trim();
+
+            if (!trackName || !trackPhone) {
+                showToast("⚠️ 조회를 위해 성함과 연락처를 빠짐없이 기입해 주세요.");
+                return;
+            }
+
+            const resultContainer = document.getElementById('track-result-container');
+            resultContainer.innerHTML = `
+                <div class="text-center py-6 text-slate-400">
+                    <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block"></i>
+                    <span>서버에서 확인하고 있습니다...</span>
+                </div>
+            `;
+            resultContainer.classList.remove('hidden');
+
+            let foundOrders = [];
+
+            if (isDemoMode) {
+                foundOrders = localOrders.filter(order => {
+                    const normalizedPhone = order.ordererPhone.replace(/[^0-9]/g, '');
+                    const targetPhone = trackPhone.replace(/[^0-9]/g, '');
+                    return order.ordererName.trim() === trackName && normalizedPhone === targetPhone;
+                });
+                renderFoundOrders(foundOrders);
+                return;
+            }
+
+            try {
+                const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+                const querySnapshot = await getDocs(ordersRef);
+                
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    const normalizedPhone = data.ordererPhone.replace(/[^0-9]/g, '');
+                    const targetPhone = trackPhone.replace(/[^0-9]/g, '');
+
+                    if (data.ordererName.trim() === trackName && normalizedPhone === targetPhone) {
+                        foundOrders.push(data);
+                    }
+                });
+
+                renderFoundOrders(foundOrders);
+            } catch (err) {
+                console.warn("Using local cache fallback during tracking:", err);
+                foundOrders = localOrders.filter(order => {
+                    const normalizedPhone = order.ordererPhone.replace(/[^0-9]/g, '');
+                    const targetPhone = trackPhone.replace(/[^0-9]/g, '');
+                    return order.ordererName.trim() === trackName && normalizedPhone === targetPhone;
+                });
+                renderFoundOrders(foundOrders);
+            }
+        }
+
+        function renderFoundOrders(foundOrders) {
+            const resultContainer = document.getElementById('track-result-container');
+            if (foundOrders.length === 0) {
+                resultContainer.innerHTML = `
+                    <div class="p-4 bg-amber-50 rounded-xl border border-amber-200 text-center text-xs text-amber-800 space-y-1">
+                        <i class="fa-solid fa-circle-exclamation text-lg mb-1 block"></i>
+                        <span class="font-bold">신청인 명단이 존재하지 않습니다.</span>
+                        <p class="text-[10px] text-amber-600">이름과 휴대폰 기재 번호를 다시 검토 바랍니다.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            foundOrders.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            resultContainer.innerHTML = foundOrders.map(order => {
+                const statusColors = {
+                    "입금대기": "bg-slate-100 text-slate-600",
+                    "입금완료": "bg-indigo-50 text-indigo-700",
+                    "배송준비": "bg-blue-50 text-blue-700",
+                    "배송중": "bg-emerald-50 text-emerald-700",
+                    "배송완료": "bg-slate-800 text-white"
+                };
+                const badgeClass = statusColors[order.status] || "bg-slate-100 text-slate-600";
+
+                return `
+                    <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3 text-xs">
+                        <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                            <div>
+                                <span class="text-[10px] text-slate-400 block font-mono">주문코드</span>
+                                <strong class="font-mono text-slate-800 text-sm">${order.orderId}</strong>
+                            </div>
+                            <span class="px-2.5 py-1.5 rounded-lg text-xs font-bold ${badgeClass}">${order.status}</span>
+                        </div>
+
+                        <div class="space-y-1">
+                            <span class="text-[10px] text-slate-400 block font-bold">주문 파츠목록</span>
+                            <div class="space-y-1 bg-white p-2.5 rounded border border-slate-150">
+                                ${order.cart.map(itm => `
+                                    <div class="flex justify-between">
+                                        <span class="font-medium text-slate-700">${itm.optionName}</span>
+                                        <span class="font-mono text-slate-400">x${itm.quantity}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-[11px] py-1 border-y border-slate-150/60">
+                            <div>
+                                <span class="text-[10px] text-slate-400 block">닉네임 / 차량 정보</span>
+                                <span class="text-indigo-700 font-bold">${order.ordererNickname} (${order.ordererCarInfo || '차량미상'})</span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400 block">입금자 성함</span>
+                                <span class="text-slate-700 font-bold">${order.depositorName}</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1.5 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
+                            <span class="text-[10px] font-bold text-indigo-700 block"><i class="fa-solid fa-truck-ramp-box mr-1"></i>배송 수령 및 운송장 정보</span>
+                            <div class="space-y-1 text-slate-600">
+                                <p><strong>수령인:</strong> ${order.shipName}</p>
+                                <p><strong>배송지:</strong> [${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
+                                <p class="pt-1.5 flex items-center justify-between border-t border-slate-200/50">
+                                    <strong>운송장 번호:</strong>
+                                    <span class="text-xs font-mono font-black text-indigo-700">
+                                        ${order.trackingNumber ? `${order.trackingNumber} <button onclick="navigator.clipboard.writeText('${order.trackingNumber}'); showToast('📋 송장이 복사되었습니다.');" class="ml-1.5 px-1.5 py-0.5 bg-indigo-100 text-[10px] rounded hover:bg-indigo-200 transition">복사</button>` : "🚚 검수 및 패키징 완료 대기중"}
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function loadAdminOrders() {
+            const tbody = document.getElementById('admin-table-body');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="p-8 text-center text-slate-400">
+                        <i class="fa-solid fa-spinner animate-spin text-xl mb-2 block text-indigo-500"></i>
+                        <span>데이터 연동 동기화 중...</span>
+                    </td>
+                </tr>
+            `;
+
+            if (isDemoMode) {
+                globalOrders = [...localOrders];
+                renderAdminOrdersUI(globalOrders);
+                return;
+            }
+
+            try {
+                const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+                const querySnapshot = await getDocs(ordersRef);
+
+                globalOrders = [];
+                querySnapshot.forEach((docSnap) => {
+                    globalOrders.push(docSnap.data());
+                });
+
+                renderAdminOrdersUI(globalOrders);
+            } catch (err) {
+                console.error("Loading Admin List Failed. Loading local cache:", err);
+                globalOrders = [...localOrders];
+                renderAdminOrdersUI(globalOrders);
+            }
+        }
+
+        function renderAdminOrdersUI(orders) {
+            const tbody = document.getElementById('admin-table-body');
+            orders.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            const totalCount = orders.length;
+            const totalSum = orders.reduce((acc, order) => acc + order.finalTotal, 0);
+            const islandCount = orders.filter(order => order.isIslandShipping).length;
+            const pendingCount = orders.filter(order => order.status === "입금대기").length;
+
+            document.getElementById('stat-total-orders').textContent = `${totalCount}건`;
+            document.getElementById('stat-total-sales').textContent = `${totalSum.toLocaleString()}원`;
+            document.getElementById('stat-island-count').textContent = `${islandCount}건`;
+            document.getElementById('stat-pending-orders').textContent = `${pendingCount}건`;
+
+            if (orders.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">아직 접수된 주문 신청서 데이터가 없습니다.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = orders.map((order, index) => {
+                const cartOverview = order.cart.map(itm => `${itm.optionName} x${itm.quantity}`).join('<br>');
+                
+                return `
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-100 last:border-0">
+                        <td class="p-3 text-slate-500 font-mono">
+                            <span class="font-bold text-slate-800 block">${order.orderId}</span>
+                            <span class="text-[10px] block text-slate-400">${order.createdAt}</span>
+                        </td>
+                        <td class="p-3">
+                            <span class="font-bold text-slate-800 block">${order.ordererName}</span>
+                            <span class="text-[10px] text-indigo-600 block font-semibold">@${order.ordererNickname}</span>
+                            <span class="text-[10px] text-amber-700 block font-medium">차량: ${order.ordererCarInfo || '미기입'}</span>
+                            <span class="text-[10px] text-slate-400 block">${order.ordererPhone}</span>
+                        </td>
+                        <td class="p-3 leading-relaxed text-[11px] font-medium text-slate-600">
+                            ${cartOverview}
+                        </td>
+                        <td class="p-3">
+                            <span class="font-bold text-slate-900 block font-mono">${order.finalTotal.toLocaleString()}원</span>
+                            <span class="text-[10px] text-slate-400 block">입금자: ${order.depositorName}</span>
+                        </td>
+                        <td class="p-3 max-w-[180px] truncate leading-normal text-[11px]">
+                            <p class="text-slate-700 truncate" title="${order.addressBasic} ${order.addressDetail}">[${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
+                            <p class="text-[10px] text-amber-600 italic truncate" title="${order.shippingMemo}">메모: ${order.shippingMemo}</p>
+                        </td>
+                        <td class="p-3 text-center space-y-2">
+                            <div class="flex items-center justify-center gap-1">
+                                <select id="status-select-${order.orderId}" onchange="updateOrderStatus('${order.orderId}', this.value)" class="rounded border border-slate-200 px-2 py-1 text-[11px] font-bold focus:border-indigo-500">
+                                    <option value="입금대기" ${order.status === "입금대기" ? "selected" : ""}>입금대기</option>
+                                    <option value="입금완료" ${order.status === "입금완료" ? "selected" : ""}>입금완료</option>
+                                    <option value="배송준비" ${order.status === "배송준비" ? "selected" : ""}>배송준비</option>
+                                    <option value="배송중" ${order.status === "배송중" ? "selected" : ""}>배송중</option>
+                                    <option value="배송완료" ${order.status === "배송완료" ? "selected" : ""}>배송완료</option>
+                                </select>
+                            </div>
+                            <div class="flex gap-1 justify-center max-w-[150px] mx-auto">
+                                <input type="text" id="tracking-input-${order.orderId}" value="${order.trackingNumber || ''}" placeholder="송장번호 입력" class="w-full text-center font-mono rounded border border-slate-200 px-1 py-1 text-[10px] outline-none focus:border-indigo-500">
+                                <button onclick="saveTrackingNumber('${order.orderId}')" class="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold shrink-0 hover:bg-slate-800 transition">저장</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        window.updateOrderStatus = async function(orderId, newStatus) {
+            if (isDemoMode) {
+                const order = localOrders.find(o => o.orderId === orderId);
+                if (order) {
+                    order.status = newStatus;
+                    showToast(`✅ [데모] 주문 상태가 [${newStatus}]로 갱신되었습니다.`);
+                    loadAdminOrders();
+                }
+                return;
+            }
+
+            try {
+                const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+                await updateDoc(orderRef, { status: newStatus });
+                showToast(`✅ 주문 상태가 [${newStatus}]로 갱신되었습니다.`);
+                loadAdminOrders(); 
+            } catch (err) {
+                console.error("Failed status update:", err);
+                showToast("❌ 상태 갱신 실패");
+            }
+        }
+
+        window.saveTrackingNumber = async function(orderId) {
+            const trackingVal = document.getElementById(`tracking-input-${orderId}`).value.trim();
+            
+            if (isDemoMode) {
+                const order = localOrders.find(o => o.orderId === orderId);
+                if (order) {
+                    order.trackingNumber = trackingVal;
+                    showToast(`✅ [데모] 송장번호 [${trackingVal || '빈값'}] 등록 완료!`);
+                    loadAdminOrders();
+                }
+                return;
+            }
+
+            try {
+                const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+                await updateDoc(orderRef, { trackingNumber: trackingVal });
+                showToast(`✅ 송장번호 [${trackingVal || '빈값'}] 등록 완료!`);
+                loadAdminOrders();
+            } catch (err) {
+                console.error("Failed tracking save:", err);
+                showToast("❌ 송장 등록 실패");
+            }
+        }
+
+        window.downloadExcelCSV = function() {
+            if (globalOrders.length === 0) {
+                showToast("❌ 다운로드할 데이터가 아직 존재하지 않습니다.");
+                return;
+            }
+
+            const headers = [
+                "주문번호", "신청일시", "주문상태", "주문자성함", "연락처", "TKC카페닉네임", "차량정보", 
+                "주문품목들", "총액", "입금자성함", "수령인", "수령인번호", 
+                "우편번호", "기본주소", "상세주소", "도서산간지역여부", "배송메모", "송장번호"
+            ];
+
+            const rows = globalOrders.map(order => {
+                const cartSummaryText = order.cart.map(itm => `${itm.optionName}(${itm.quantity}개)`).join(' | ');
+                
+                return [
+                    order.orderId,
+                    order.createdAt,
+                    order.status,
+                    order.ordererName,
+                    order.ordererPhone,
+                    order.ordererNickname,
+                    order.ordererCarInfo || "미기입",
+                    cartSummaryText,
+                    order.finalTotal,
+                    order.depositorName,
+                    order.shipName,
+                    order.shipPhone,
+                    order.postalCode,
+                    order.addressBasic,
+                    order.addressDetail,
+                    order.isIslandShipping ? "제주/도서산간" : "일반",
+                    order.shippingMemo,
+                    order.trackingNumber
+                ].map(val => {
+                    const stringVal = String(val).replace(/"/g, '""');
+                    return `"${stringVal}"`;
+                });
+            });
+
+            const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+            const bom = "\ufeff";
+            const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", `테슬랩_회원구매_주문리스트_${new Date().toISOString().slice(0,10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast("📊 엑셀용 CSV 파일 다운로드가 완료되었습니다.");
+        }
+
+        window.switchTab = function(activeTabId, activeViewId) {
+            ['order-tab', 'track-tab', 'admin-tab'].forEach(tabId => {
+                document.getElementById(tabId).classList.remove('tab-active');
+            });
+            ['view-order-form', 'view-track-order', 'view-admin-dashboard'].forEach(viewId => {
+                document.getElementById(viewId).classList.add('hidden');
+            });
+
+            document.getElementById(activeTabId).classList.add('tab-active');
+            document.getElementById(activeViewId).classList.remove('hidden');
+
+            if (activeViewId === 'view-admin-dashboard') {
+                if (!isAdminAuthenticated) {
+                    document.getElementById('admin-auth-panel').classList.remove('hidden');
+                    document.getElementById('admin-content-panel').classList.add('hidden');
+                } else {
+                    loadAdminOrders();
+                    renderAdminProducts();
+                }
+            }
+        }
+
+        window.formatPhoneNumber = function(input) {
+            let num = input.value.replace(/[^0-9]/g, '');
+            if (num.length < 4) {
+                input.value = num;
+            } else if (num.length < 8) {
+                input.value = num.substr(0, 3) + '-' + num.substr(3);
+            } else if (num.length < 11) {
+                input.value = num.substr(0, 3) + '-' + num.substr(3, 3) + '-' + num.substr(6);
+            } else {
+                input.value = num.substr(0, 3) + '-' + num.substr(3, 4) + '-' + num.substr(7, 4);
+            }
+        }
+
+        window.openLightbox = function(src, caption) {
+            document.getElementById('lightbox-img').src = src;
+            document.getElementById('lightbox-caption').textContent = caption;
+            document.getElementById('lightbox').classList.remove('hidden');
+        }
+
+        window.closeLightbox = function() {
+            document.getElementById('lightbox').classList.add('hidden');
+        }
+
+        window.openModal = function(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        window.closeModal = function(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        window.copyBankAccount = function() {
+            const temp = document.createElement('textarea');
+            temp.value = "카카오뱅크 3333-31-7244898 배준호";
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            showToast("📋 계좌정보가 복사되었습니다!");
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = "bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 transform translate-y-2 opacity-0 transition-all duration-300";
+            toast.innerHTML = `
+                <i class="fa-solid fa-bell text-indigo-400 shrink-0"></i>
+                <span class="font-semibold">${message}</span>
+            `;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 50);
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+    </script>
+</body>
+</html>
+
+
