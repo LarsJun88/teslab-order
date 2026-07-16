@@ -371,6 +371,37 @@
                             <h3 class="font-bold text-slate-900 text-base">주문 신청서 리스트</h3>
                             <p class="text-xs text-slate-400">실시간 주문 관리 영역입니다.</p>
                         </div>
+window.saveNoticeConfig = async function() {
+    const newNoticeText = document.getElementById('admin-notice-input').value.trim();
+
+    if (!newNoticeText) {
+        showToast("❌ 공지 내용은 비워둘 수 없습니다.");
+        return;
+    }
+
+    if (isDemoMode) {
+        localNotice = newNoticeText;
+        localStorage.setItem('teslap_notice_cache', localNotice);
+        renderNoticeUI(localNotice);
+        showToast("✅ 공지가 저장되었습니다.");
+        return;
+    }
+
+    try {
+        const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
+        await setDoc(noticeDocRef, { text: newNoticeText });
+
+        localNotice = newNoticeText;
+        localStorage.setItem('teslap_notice_cache', localNotice);
+
+        renderNoticeUI(localNotice);
+        showToast("✅ 공지가 저장되었습니다.");
+    } catch (err) {
+        console.error("Notice save failed.", err);
+        showToast("❌ 공지 저장 실패");
+    }
+};
+
                         <button onclick="downloadExcelCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
                             <i class="fa-solid fa-file-excel"></i> CSV 다운로드
                         </button>
@@ -801,9 +832,30 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+
+    import {
+        getAuth,
+        signInAnonymously,
+        signInWithCustomToken
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+    import {
+        getFirestore,
+        doc,
+        getDoc,
+        setDoc,
+        updateDoc,
+        deleteDoc,
+        collection,
+        getDocs
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    import {
+        getStorage,
+        ref,
+        uploadBytes,
+        getDownloadURL
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyAGqFb_3nbwIShXC5VYX0ZPwtQGnVw0ytI",
