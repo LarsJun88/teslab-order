@@ -1170,7 +1170,7 @@
         imgEl.style.cursor = "zoom-in";
         imgEl.onclick = () => openLightbox(prod.img, `${prod.name} 대표 이미지`);
         imgEl.onerror = () => {
-            imgEl.src = 'https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=300&auto=format&fit=crop';
+            imgEl.src = 'https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop';
         };
 
         const selectEl = document.getElementById('detail-opt-select');
@@ -1456,7 +1456,7 @@
         }
 
         if (!document.getElementById('agree-privacy').checked || !document.getElementById('agree-thirdparty').checked) {
-            showToast("❌ 필수 약관에 동의해 주세요.");
+            showToast("❌ 필수 약관에 동의하세요.");
             return;
         }
 
@@ -1464,7 +1464,7 @@
         const basicAddr = document.getElementById('address_basic').value.trim();
 
         if (!postalVal || !basicAddr) {
-            showToast("❌ 배송 주소를 입력해 주세요.");
+            showToast("❌ 배송 주소를 입력하세요.");
             return;
         }
 
@@ -1569,7 +1569,7 @@
         const resultContainer = document.getElementById('track-result-container');
         resultContainer.innerHTML = `
             <div class="text-center py-6 text-slate-400">
-                <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block"></i>
+                <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block text-indigo-500"></i>
                 <span>조회 중입니다...</span>
             </div>
         `;
@@ -2680,7 +2680,7 @@
 
         setTimeout(() => {
             toast.classList.add('translate-y-2', 'opacity-0');
-            toast.remove();
+            setTimeout(() => toast.remove(), 300);
         }, 3000);
     }
 </script>
