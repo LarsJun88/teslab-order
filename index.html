@@ -371,37 +371,6 @@
                             <h3 class="font-bold text-slate-900 text-base">주문 신청서 리스트</h3>
                             <p class="text-xs text-slate-400">실시간 주문 관리 영역입니다.</p>
                         </div>
-window.saveNoticeConfig = async function() {
-    const newNoticeText = document.getElementById('admin-notice-input').value.trim();
-
-    if (!newNoticeText) {
-        showToast("❌ 공지 내용은 비워둘 수 없습니다.");
-        return;
-    }
-
-    if (isDemoMode) {
-        localNotice = newNoticeText;
-        localStorage.setItem('teslap_notice_cache', localNotice);
-        renderNoticeUI(localNotice);
-        showToast("✅ 공지가 저장되었습니다.");
-        return;
-    }
-
-    try {
-        const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
-        await setDoc(noticeDocRef, { text: newNoticeText });
-
-        localNotice = newNoticeText;
-        localStorage.setItem('teslap_notice_cache', localNotice);
-
-        renderNoticeUI(localNotice);
-        showToast("✅ 공지가 저장되었습니다.");
-    } catch (err) {
-        console.error("Notice save failed.", err);
-        showToast("❌ 공지 저장 실패");
-    }
-};
-
                         <button onclick="downloadExcelCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
                             <i class="fa-solid fa-file-excel"></i> CSV 다운로드
                         </button>
@@ -416,7 +385,7 @@ window.saveNoticeConfig = async function() {
                                 <th class="p-4">선택 품목</th>
                                 <th class="p-4">금액</th>
                                 <th class="p-4">배송 주소</th>
-                                <th class="p-4 text-center">상태 / 송장</th>
+                                <th class="p-4 text-center">상태 / 송장 / 삭제</th>
                             </tr>
                             </thead>
                             <tbody id="admin-table-body" class="text-xs text-slate-600 divide-y divide-slate-100">
@@ -550,10 +519,25 @@ window.saveNoticeConfig = async function() {
                 </div>
 
                 <div id="detail-tab-content-desc" class="text-xs text-slate-600 space-y-4 leading-relaxed">
-                    <p><i class="fa-solid fa-check text-indigo-500 mr-1.5"></i><strong>전용 3D 가공 공정</strong>으로 제작되는 맞춤형 파츠입니다.</p>
-                    <p><i class="fa-solid fa-check text-indigo-500 mr-1.5"></i>차량 환경을 고려하여 내구성과 체결감을 중심으로 설계되었습니다.</p>
-                    <div id="detail-extra-images" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4"></div>
-                </div>
+    <div class="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+        <div class="flex items-center gap-1.5 text-indigo-600 font-extrabold text-[11px] mb-2">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>상품 상세 설명</span>
+        </div>
+        <div id="detail-spec-text" class="whitespace-pre-wrap leading-relaxed text-slate-700 font-medium">
+            상세 설명을 불러오는 중입니다...
+        </div>
+    </div>
+
+    <div>
+        <div class="flex items-center gap-1.5 text-slate-500 font-extrabold text-[11px] mb-2">
+            <i class="fa-solid fa-images"></i>
+            <span>상세 설명 이미지</span>
+        </div>
+        <div id="detail-extra-images" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1"></div>
+    </div>
+</div>
+
 
                 <div id="detail-tab-content-policy" class="text-xs text-slate-600 space-y-2.5 leading-relaxed hidden">
                     <p><i class="fa-solid fa-truck text-amber-500 mr-1.5"></i><strong>안내사항:</strong> 전 제품은 주문 확인 후 개별 맞춤 제작됩니다.</p>
@@ -677,6 +661,11 @@ window.saveNoticeConfig = async function() {
                 <label class="block font-bold text-slate-600 mb-1">상품 설명</label>
                 <input type="text" id="edit-prod-desc" placeholder="상세 설명" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
             </div>
+<div>
+    <label class="block font-bold text-slate-600 mb-1">상세 스펙 설명</label>
+    <textarea id="edit-prod-detail-spec" rows="5" placeholder="상세보기 > 상세 스펙 탭에 표시될 설명을 입력하세요.&#10;예:&#10;- 전용 3D 프린팅 제작&#10;- 차량별 단차 고려 설계&#10;- 내열 소재 사용" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 leading-relaxed"></textarea>
+    <span class="text-[10px] text-slate-400">줄바꿈이 그대로 상세페이지에 반영됩니다.</span>
+</div>
             <div>
                 <label class="block font-bold text-slate-600 mb-1">기본 가격</label>
                 <input type="number" id="edit-prod-price" placeholder="12000" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
@@ -1208,6 +1197,11 @@ window.saveNoticeConfig = async function() {
         document.getElementById('detail-desc').textContent = prod.desc || '';
         document.getElementById('detail-price').textContent = `${Number(prod.price || 0).toLocaleString()}원`;
         document.getElementById('detail-qty-display').textContent = activeDetailQty;
+const detailSpecTextEl = document.getElementById('detail-spec-text');
+
+if (detailSpecTextEl) {
+    detailSpecTextEl.textContent = prod.detailSpec || prod.desc || "등록된 상세 스펙 설명이 없습니다.";
+}
 
         const imgEl = document.getElementById('detail-img');
         imgEl.src = prod.img || '';
@@ -1222,17 +1216,39 @@ window.saveNoticeConfig = async function() {
         selectEl.innerHTML = `<option value="">-- 옵션을 선택해 주세요 --</option>` + opts.map(opt => `<option value="${opt}">${opt}</option>`).join('');
 
         const extraImgsContainer = document.getElementById('detail-extra-images');
-        extraImgsContainer.innerHTML = "";
 
-        if (prod.extraImgs && prod.extraImgs.trim().length > 0) {
-            const imgLinks = prod.extraImgs.split(/[\n,]/).map(url => url.trim()).filter(Boolean);
+if (extraImgsContainer) {
+    extraImgsContainer.innerHTML = "";
 
-            extraImgsContainer.innerHTML = imgLinks.map(url => `
-                <div class="rounded-xl overflow-hidden border border-slate-100 bg-slate-50 relative group cursor-zoom-in aspect-[4/3]" onclick="openLightbox('${url}', '${prod.name} 상세 스펙 사진')">
-                    <img src="${url}" class="w-full h-full object-cover img-zoom" onerror="this.remove()">
+    if (prod.extraImgs && prod.extraImgs.trim().length > 0) {
+        const imgLinks = prod.extraImgs
+            .split(/[
+,]/)
+            .map(url => url.trim())
+            .filter(Boolean);
+
+        extraImgsContainer.innerHTML = imgLinks.map((url, index) => {
+            const safeUrl = url.replace(/'/g, "\\'");
+            const caption = `${prod.name || '상품'} 상세 이미지 ${index + 1}`;
+
+            return `
+                <div class="rounded-xl overflow-hidden border border-slate-100 bg-slate-50 relative group cursor-zoom-in aspect-[4/3]" onclick="openLightbox('${safeUrl}', '${caption}')">
+                    <img src="${url}" class="w-full h-full object-cover img-zoom" onerror="this.closest('div').remove()">
+                    <div class="absolute bottom-0 left-0 right-0 bg-slate-950/60 text-white text-[10px] px-2 py-1 opacity-0 group-hover:opacity-100 transition">
+                        클릭해서 확대 보기
+                    </div>
                 </div>
-            `).join('');
-        }
+            `;
+        }).join('');
+    } else {
+        extraImgsContainer.innerHTML = `
+            <div class="col-span-full p-5 text-center text-xs text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                등록된 상세 이미지가 없습니다.
+            </div>
+        `;
+    }
+}
+
 
         switchDetailTab('desc');
         calculateDetailMockPrice();
@@ -1847,7 +1863,7 @@ window.saveNoticeConfig = async function() {
                         </div>
 
                         <button onclick="deleteOrder('${order.orderId}')" class="w-full px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-extrabold transition border border-rose-100">
-                              <i class="fa-solid fa-trash-can mr-1"></i> 주문 삭제
+                            <i class="fa-solid fa-trash-can mr-1"></i> 주문 삭제
                         </button>
                     </td>
                 </tr>
@@ -1914,51 +1930,53 @@ window.saveNoticeConfig = async function() {
         }
     };
 
-window.deleteOrder = async function(orderId) {
-    if (!isAdminAuthenticated) {
-        showToast("❌ 관리자 인증 후 이용할 수 있습니다.");
-        return;
-    }
+    window.deleteOrder = async function(orderId) {
+        if (!isAdminAuthenticated) {
+            showToast("❌ 관리자 인증 후 이용할 수 있습니다.");
+            return;
+        }
 
-    const targetOrder = globalOrders.find(order => order.orderId === orderId) || localOrders.find(order => order.orderId === orderId);
+        const targetOrder =
+            globalOrders.find(order => order.orderId === orderId) ||
+            localOrders.find(order => order.orderId === orderId);
 
-    const orderInfoText = targetOrder
-        ? `${targetOrder.ordererName || '주문자'} / ${Number(targetOrder.finalTotal || 0).toLocaleString()}원`
-        : orderId;
+        const orderInfoText = targetOrder
+            ? `${targetOrder.ordererName || '주문자'} / ${Number(targetOrder.finalTotal || 0).toLocaleString()}원`
+            : orderId;
 
-    const confirmDelete = confirm(
-        `정말 이 주문을 삭제할까요?
+        const confirmDelete = confirm(
+            `정말 이 주문을 삭제할까요?
 
 주문번호: ${orderId}
 주문정보: ${orderInfoText}
 
 삭제된 주문은 복구할 수 없습니다.`
-    );
+        );
 
-    if (!confirmDelete) return;
+        if (!confirmDelete) return;
 
-    if (isDemoMode) {
-        localOrders = localOrders.filter(order => order.orderId !== orderId);
-        globalOrders = globalOrders.filter(order => order.orderId !== orderId);
+        if (isDemoMode) {
+            localOrders = localOrders.filter(order => order.orderId !== orderId);
+            globalOrders = globalOrders.filter(order => order.orderId !== orderId);
 
-        renderAdminOrdersUI(globalOrders);
-        showToast("🗑️ 주문이 삭제되었습니다.");
-        return;
-    }
+            renderAdminOrdersUI(globalOrders);
+            showToast("🗑️ 주문이 삭제되었습니다.");
+            return;
+        }
 
-    try {
-        const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-        await deleteDoc(orderRef);
+        try {
+            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+            await deleteDoc(orderRef);
 
-        globalOrders = globalOrders.filter(order => order.orderId !== orderId);
+            globalOrders = globalOrders.filter(order => order.orderId !== orderId);
 
-        renderAdminOrdersUI(globalOrders);
-        showToast("🗑️ 주문이 삭제되었습니다.");
-    } catch (err) {
-        console.error("Order delete failed.", err);
-        showToast("❌ 주문 삭제 중 오류가 발생했습니다.");
-    }
-};
+            renderAdminOrdersUI(globalOrders);
+            showToast("🗑️ 주문이 삭제되었습니다.");
+        } catch (err) {
+            console.error("Order delete failed.", err);
+            showToast("❌ 주문 삭제 중 오류가 발생했습니다.");
+        }
+    };
 
     async function renderAdminStatistics() {
         const chartContainer = document.getElementById('stats-chart-container');
@@ -2081,6 +2099,7 @@ window.deleteOrder = async function(orderId) {
         document.getElementById('edit-prod-itemno').value = `ITEM ${String(products.length + 1).padStart(2, '0')}`;
         document.getElementById('edit-prod-name').value = "";
         document.getElementById('edit-prod-desc').value = "";
+        document.getElementById('edit-prod-detail-spec').value = "";
         document.getElementById('edit-prod-price').value = "";
         document.getElementById('edit-prod-img').value = "";
         document.getElementById('edit-prod-options').value = "";
@@ -2097,9 +2116,11 @@ window.deleteOrder = async function(orderId) {
         document.getElementById('edit-prod-itemno').value = prod.itemNo || "";
         document.getElementById('edit-prod-name').value = prod.name || "";
         document.getElementById('edit-prod-desc').value = prod.desc || "";
+        document.getElementById('edit-prod-detail-spec').value = prod.detailSpec || prod.desc || "";
         document.getElementById('edit-prod-price').value = prod.price || "";
         document.getElementById('edit-prod-img').value = prod.img || "";
-        document.getElementById('edit-prod-options').value = Array.isArray(prod.options) ? prod.options.join('\n') : "";
+        document.getElementById('edit-prod-options').value = Array.isArray(prod.options) ? prod.options.join('
+') : "";
         document.getElementById('edit-prod-extra-imgs').value = prod.extraImgs || "";
 
         openModal('product-edit-modal');
@@ -2110,6 +2131,7 @@ window.deleteOrder = async function(orderId) {
         const itemNo = document.getElementById('edit-prod-itemno').value.trim();
         const name = document.getElementById('edit-prod-name').value.trim();
         const desc = document.getElementById('edit-prod-desc').value.trim();
+        const detailSpec = document.getElementById('edit-prod-detail-spec').value.trim();
         const price = parseInt(document.getElementById('edit-prod-price').value, 10);
         const img = document.getElementById('edit-prod-img').value.trim();
         const optionsRaw = document.getElementById('edit-prod-options').value.trim();
@@ -2120,7 +2142,8 @@ window.deleteOrder = async function(orderId) {
             return;
         }
 
-        const options = optionsRaw.split('\n').map(o => o.trim()).filter(Boolean);
+        const options = optionsRaw.split('
+').map(o => o.trim()).filter(Boolean);
 
         if (options.length === 0) {
             showToast("❌ 최소 1개 이상의 옵션을 입력해 주세요.");
@@ -2132,7 +2155,7 @@ window.deleteOrder = async function(orderId) {
         if (editId) {
             updatedList = updatedList.map(p => {
                 if (p.id === editId) {
-                    return { ...p, itemNo, name, desc, price, img, options, extraImgs };
+                    return { ...p, itemNo, name, desc, detailSpec, price, img, options, extraImgs };
                 }
                 return p;
             });
@@ -2142,6 +2165,7 @@ window.deleteOrder = async function(orderId) {
                 itemNo,
                 name,
                 desc,
+                detailSpec,
                 price,
                 img,
                 options,
@@ -2279,7 +2303,10 @@ window.deleteOrder = async function(orderId) {
                 const textarea = document.getElementById(targetId);
                 const existing = textarea.value.trim();
 
-                textarea.value = existing ? existing + '\n' + urls.join('\n') : urls.join('\n');
+                textarea.value = existing ? existing + '
+' + urls.join('
+') : urls.join('
+');
 
                 showToast(`✅ ${files.length}개 이미지 업로드 완료`);
             } else {
@@ -2546,7 +2573,8 @@ window.deleteOrder = async function(orderId) {
             ].map(val => `"${String(val ?? '').replace(/"/g, '""')}"`);
         });
 
-        const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+        const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('
+');
         const bom = "\ufeff";
         const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
 
