@@ -1,0 +1,16 @@
+{
+  "name": "teslab-order-functions",
+  "description": "Firebase Cloud Functions for Teslab order center",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "deploy": "firebase deploy --only functions",
+    "lint": "node --check index.js"
+  },
+  "dependencies": {
+    "firebase-functions": "^6.0.1"
+  }
+}
