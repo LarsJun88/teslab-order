@@ -84,7 +84,7 @@
         <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>제품 List
+                    <span class="w-1.5 h-5 bg-indigo-600 rounded"></span>제작 파츠 전시관
                 </h2>
                 <span class="text-xs text-slate-400">상품 클릭 시 상세 보기</span>
             </div>
@@ -1569,7 +1569,7 @@
         const resultContainer = document.getElementById('track-result-container');
         resultContainer.innerHTML = `
             <div class="text-center py-6 text-slate-400">
-                <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block text-indigo-500"></i>
+                <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block"></i>
                 <span>조회 중입니다...</span>
             </div>
         `;
@@ -1864,7 +1864,7 @@
             if (order) {
                 order.trackingNumber = trackingVal;
                 order.courier = courierVal;
-                if (trackingVal) order.status = "배송중";
+                if (trackingVal) order.status = "bg-emerald-50 text-emerald-700"; // "배송중" 상태
             }
 
             showToast("✅ 송장 정보가 저장되었습니다.");
