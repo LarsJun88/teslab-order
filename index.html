@@ -296,7 +296,7 @@
                     </div>
                 </div>
 
-                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 transition-all text-white font-extrabold py-4 rounded-xl text-center shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+                <button type="submit" id="order-submit-button" class="w-full bg-indigo-600 hover:bg-indigo-700 transition-all text-white font-extrabold py-4 rounded-xl text-center shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
                     <i class="fa-solid fa-paper-plane"></i> 주문 완료 및 내역서 전송
                 </button>
             </div>
@@ -365,6 +365,10 @@
                         <div class="py-2.5 border-y border-slate-100 flex items-baseline justify-between">
                             <span class="text-xs text-slate-400 font-bold">기본 판매단가</span>
                             <span class="text-xl font-black text-slate-950" id="detail-price">0원</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-400 font-bold">현재 재고</span>
+                            <span id="detail-stock-display" class="font-extrabold text-emerald-600">999개</span>
                         </div>
                     </div>
 
@@ -646,8 +650,13 @@
         getDoc,
         setDoc,
         collection,
-        getDocs
+        getDocs,
+        onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import {
+        getFunctions,
+        httpsCallable
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyAGqFb_3nbwIShXC5VYX0ZPwtQGnVw0ytI",
@@ -664,6 +673,8 @@
     let app = null;
     let auth = null;
     let db = null;
+    let cloudFunctions = null;
+    let submitOrderWithInventoryCall = null;
     let isDemoMode = false;
     let currentUser = null;
 
@@ -820,9 +831,13 @@
     let cart = [];
     let isIslandShipping = false;
     const shippingDefault = 4000;
+    const MAX_PRODUCT_STOCK = 999;
+    const DEFAULT_PRODUCT_STOCK = 999;
     const DEFAULT_IMAGE_URL = "./assets/product-placeholder.svg";
     let productImageObserver = null;
     let postcodeScriptPromise = null;
+    let catalogUnsubscribe = null;
+    let isSubmittingOrder = false;
 
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -909,6 +924,8 @@
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         db = getFirestore(app);
+        cloudFunctions = getFunctions(app, "asia-northeast3");
+        submitOrderWithInventoryCall = httpsCallable(cloudFunctions, "submitOrderWithInventory");
     } catch (err) {
         console.warn("Firebase init failed. Demo mode active.", err);
         isDemoMode = true;
@@ -979,8 +996,26 @@
         return /\(\s*품절\s*\)/.test(String(value || ''));
     }
 
+    function getProductStock(product) {
+        const stock = Number(product?.stock);
+        if (!Number.isFinite(stock)) return DEFAULT_PRODUCT_STOCK;
+        return Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(stock)));
+    }
+
+    function getCartProductQuantity(productId, cartItems = cart) {
+        return cartItems
+            .filter(item => item.productId === productId)
+            .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    }
+
+    function getAvailableProductStock(product, cartItems = cart) {
+        return Math.max(0, getProductStock(product) - getCartProductQuantity(product?.id, cartItems));
+    }
+
     function isProductSoldOut(product) {
-        return isSoldOutText(product?.name) || isSoldOutText(product?.itemNo);
+        return getProductStock(product) === 0 ||
+            isSoldOutText(product?.name) ||
+            isSoldOutText(product?.itemNo);
     }
 
     function normalizeOptionLabel(value) {
@@ -1007,6 +1042,95 @@
         return cart.find(item => isCartItemSoldOut(item));
     }
 
+    function findInventoryIssue(cartItems = cart, catalogProducts = products) {
+        const requestedByProduct = new Map();
+
+        cartItems.forEach(item => {
+            const productId = String(item.productId || '');
+            requestedByProduct.set(productId, (requestedByProduct.get(productId) || 0) + Number(item.quantity || 0));
+        });
+
+        for (const [productId, requestedQuantity] of requestedByProduct) {
+            const product = catalogProducts.find(item => item.id === productId);
+            const availableStock = product ? getProductStock(product) : 0;
+
+            if (!product || isProductSoldOut(product) || requestedQuantity > availableStock) {
+                return {
+                    productId,
+                    productName: product?.name || '판매 종료 상품',
+                    availableStock,
+                    requestedQuantity
+                };
+            }
+        }
+
+        return null;
+    }
+
+    function commitLocalInventory(cartItems) {
+        const issue = findInventoryIssue(cartItems, products);
+        if (issue) return issue;
+
+        const requestedByProduct = new Map();
+        cartItems.forEach(item => {
+            requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) || 0) + Number(item.quantity || 0));
+        });
+
+        products = products.map(product => ({
+            ...product,
+            stock: getProductStock(product) - (requestedByProduct.get(product.id) || 0)
+        }));
+        localProducts = products;
+        localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+        renderProductsUI();
+        renderCartUI();
+        return null;
+    }
+
+    function applyCatalogProducts(remoteProducts) {
+        if (!Array.isArray(remoteProducts)) return;
+
+        products = remoteProducts.map(product => ({
+            ...product,
+            stock: getProductStock(product)
+        }));
+        localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+
+        if (activeProduct) {
+            activeProduct = products.find(product => product.id === activeProduct.id) || null;
+            if (activeProduct) {
+                const stock = getProductStock(activeProduct);
+                const stockDisplay = document.getElementById('detail-stock-display');
+                if (stockDisplay) {
+                    stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
+                    stockDisplay.className = stock <= 2
+                        ? 'font-extrabold text-rose-600'
+                        : 'font-extrabold text-emerald-600';
+                }
+                const maxDetailQuantity = Math.max(1, getAvailableProductStock(activeProduct));
+                activeDetailQty = Math.min(activeDetailQty, maxDetailQuantity);
+                document.getElementById('detail-qty-display').textContent = activeDetailQty;
+                calculateDetailMockPrice();
+            } else {
+                closeProductDetailModal();
+            }
+        }
+
+        renderProductsUI();
+        renderCartUI();
+        calculateCartTotals();
+    }
+
+    function startCatalogSync(catalogDocRef) {
+        catalogUnsubscribe?.();
+        catalogUnsubscribe = onSnapshot(catalogDocRef, snapshot => {
+            if (!snapshot.exists()) return;
+            applyCatalogProducts(snapshot.data().products || []);
+        }, err => {
+            console.warn('Realtime catalog sync failed.', err);
+        });
+    }
+
     async function initCatalogAndNotice() {
         if (isDemoMode) return;
 
@@ -1025,19 +1149,16 @@
             }
 
             if (catalogSnap.exists()) {
-                const remoteProducts = catalogSnap.data().products || [];
-                if (Array.isArray(remoteProducts) && remoteProducts.length > 0) {
-                    products = remoteProducts;
-                    localStorage.setItem('teslap_products_cache', JSON.stringify(products));
-                }
+                applyCatalogProducts(catalogSnap.data().products || []);
             }
 
             renderNoticeUI(localNotice);
-            renderProductsUI();
+            startCatalogSync(catalogDocRef);
         } catch (err) {
             console.error("Firestore catalog load failure. Using cache.", err);
         }
     }
+
     function renderNoticeUI(text) {
         const display = document.getElementById('notice-text-display');
         if (display) display.textContent = text;
@@ -1052,6 +1173,8 @@
 
         listContainer.innerHTML = products.map(prod => {
             const soldOut = isProductSoldOut(prod);
+            const stock = getProductStock(prod);
+            const lowStock = stock > 0 && stock <= 5;
             const thumbnailUrl = getProductThumbnailUrl(prod);
             const safeName = escapeHtml(prod.name || '상품');
             const safeDescription = escapeHtml(prod.desc || '');
@@ -1074,7 +1197,7 @@
                     <p class="text-[10px] sm:text-xs text-slate-400 truncate">${safeDescription}</p>
                     <div class="flex items-center justify-between gap-1 pt-0.5 sm:pt-1">
                         <span class="text-xs sm:text-sm font-black text-slate-950 whitespace-nowrap">${Number(prod.price || 0).toLocaleString()}원</span>
-                        <span class="text-[10px] ${soldOut ? 'text-rose-600 bg-rose-50' : 'text-indigo-600 bg-indigo-50/70'} font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded whitespace-nowrap">${soldOut ? '품절' : '옵션지원'}</span>
+                        <span class="text-[10px] ${soldOut ? 'text-rose-600 bg-rose-50' : lowStock ? 'text-amber-700 bg-amber-50' : 'text-emerald-700 bg-emerald-50'} font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded whitespace-nowrap">${soldOut ? '품절' : '재고 ' + stock + '개'}</span>
                     </div>
                 </div>
             </div>
@@ -1093,6 +1216,12 @@
         document.getElementById('detail-title').textContent = prod.name || '';
         document.getElementById('detail-desc').textContent = prod.desc || '';
         document.getElementById('detail-price').textContent = `${Number(prod.price || 0).toLocaleString()}원`;
+        const stock = getProductStock(prod);
+        const stockDisplay = document.getElementById('detail-stock-display');
+        stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
+        stockDisplay.className = stock <= 2
+            ? 'font-extrabold text-rose-600'
+            : 'font-extrabold text-emerald-600';
         document.getElementById('detail-qty-display').textContent = activeDetailQty;
         const detailSpecTextEl = document.getElementById('detail-spec-text');
 
@@ -1198,9 +1327,17 @@
     };
 
     window.adjustDetailQty = function(delta) {
-        activeDetailQty += delta;
-        if (activeDetailQty < 1) activeDetailQty = 1;
+        if (!activeProduct) return;
 
+        const nextQuantity = Math.max(1, activeDetailQty + delta);
+        const availableStock = getAvailableProductStock(activeProduct);
+
+        if (delta > 0 && nextQuantity > availableStock) {
+            showToast(`⚠️ 현재 추가 가능한 재고는 ${availableStock}개입니다.`);
+            return;
+        }
+
+        activeDetailQty = nextQuantity;
         document.getElementById('detail-qty-display').textContent = activeDetailQty;
         calculateDetailMockPrice();
     };
@@ -1210,15 +1347,19 @@
         if (!button || !activeProduct) return;
 
         const selectedVal = document.getElementById('detail-opt-select').value;
+        const availableStock = getAvailableProductStock(activeProduct);
         const soldOut = isProductSoldOut(activeProduct) || isSoldOutText(selectedVal);
+        const insufficientStock = activeDetailQty > availableStock;
 
-        button.disabled = soldOut;
-        button.className = soldOut
+        button.disabled = soldOut || insufficientStock;
+        button.className = soldOut || insufficientStock
             ? "flex-1 bg-slate-300 text-slate-500 font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5 cursor-not-allowed"
             : "flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5";
         button.innerHTML = soldOut
             ? `<i class="fa-solid fa-ban"></i> 품절 상품`
-            : `<i class="fa-solid fa-cart-shopping"></i> 장바구니 담기`;
+            : insufficientStock
+                ? `<i class="fa-solid fa-ban"></i> 재고 부족`
+                : `<i class="fa-solid fa-cart-shopping"></i> 장바구니 담기`;
     }
 
     window.calculateDetailMockPrice = function() {
@@ -1244,6 +1385,12 @@
 
         if (!selectedVal) {
             showToast("⚠️ 옵션을 먼저 선택해 주세요.");
+            return;
+        }
+
+        const availableStock = getAvailableProductStock(activeProduct);
+        if (activeDetailQty > availableStock) {
+            showToast(`❌ 재고가 부족합니다. 현재 추가 가능한 수량은 ${availableStock}개입니다.`);
             return;
         }
 
@@ -1284,13 +1431,17 @@
         }
 
         container.innerHTML = cart.map((item, idx) => {
-            const soldOut = isCartItemSoldOut(item);
+            const product = products.find(prod => prod.id === item.productId);
+            const currentStock = product ? getProductStock(product) : 0;
+            const requestedProductQuantity = getCartProductQuantity(item.productId);
+            const stockIssue = !product || requestedProductQuantity > currentStock;
+            const soldOut = isCartItemSoldOut(item) || stockIssue;
 
             return `
             <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div class="space-y-1">
                     <span class="text-xs font-bold text-slate-800 block">${item.optionName} ${soldOut ? '<em class="not-italic text-rose-600">(품절)</em>' : ''}</span>
-                    <span class="text-[11px] font-medium text-slate-400">${item.unitPrice.toLocaleString()}원</span>
+                    <span class="text-[11px] font-medium ${stockIssue ? 'text-rose-600' : 'text-slate-400'}">${item.unitPrice.toLocaleString()}원 · 재고 ${currentStock}개</span>
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="flex items-center border border-slate-200 bg-white rounded-lg overflow-hidden">
@@ -1308,9 +1459,16 @@
     }
 
     window.updateCartQty = function(index, delta) {
-        cart[index].quantity += delta;
-        if (cart[index].quantity < 1) cart[index].quantity = 1;
+        const item = cart[index];
+        if (!item) return;
 
+        const product = products.find(prod => prod.id === item.productId);
+        if (delta > 0 && (!product || getCartProductQuantity(item.productId) + delta > getProductStock(product))) {
+            showToast(`⚠️ ${product?.name || '상품'} 재고가 부족합니다.`);
+            return;
+        }
+
+        item.quantity = Math.max(1, item.quantity + delta);
         renderCartUI();
         calculateCartTotals();
     };
@@ -1438,6 +1596,12 @@
             return;
         }
 
+        const inventoryIssue = findInventoryIssue();
+        if (inventoryIssue) {
+            showToast(`❌ ${inventoryIssue.productName} 재고가 부족합니다. 현재 ${inventoryIssue.availableStock}개`);
+            return;
+        }
+
         if (!document.getElementById('agree-privacy').checked || !document.getElementById('agree-thirdparty').checked) {
             showToast("❌ 필수 약관에 동의하세요.");
             return;
@@ -1489,20 +1653,53 @@
             courier: "한진택배"
         };
 
-        if (isDemoMode) {
-            localOrders.push(orderPayload);
-            renderSuccessReceipt(orderPayload);
-            return;
+        if (isSubmittingOrder) return;
+
+        const submitButton = event.submitter || document.getElementById('order-submit-button');
+        const originalButtonHtml = submitButton?.innerHTML || '';
+        isSubmittingOrder = true;
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.classList.add('opacity-60', 'cursor-wait');
+            submitButton.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 재고 확인 및 주문 접수 중`;
         }
 
         try {
-            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-            await setDoc(orderRef, orderPayload);
+            if (isDemoMode) {
+                const localInventoryIssue = commitLocalInventory(orderPayload.cart);
+                if (localInventoryIssue) {
+                    showToast(`❌ ${localInventoryIssue.productName} 재고가 부족합니다. 현재 ${localInventoryIssue.availableStock}개`);
+                    return;
+                }
+                localOrders.push(orderPayload);
+                renderSuccessReceipt(orderPayload);
+                return;
+            }
+
+            if (!submitOrderWithInventoryCall) {
+                throw new Error('Inventory order function is unavailable.');
+            }
+
+            await submitOrderWithInventoryCall({ order: orderPayload });
             renderSuccessReceipt(orderPayload);
         } catch (err) {
-            console.error("Order write failed. Local fallback.", err);
-            localOrders.push(orderPayload);
-            renderSuccessReceipt(orderPayload);
+            console.error("Inventory order submission failed.", err);
+            const details = err?.details || err?.customData?.details;
+
+            if (details?.reason === 'insufficient-stock') {
+                showToast(`❌ ${details.productName} 재고가 부족합니다. 현재 ${details.availableStock}개`);
+            } else if (String(err?.code || '').includes('already-exists')) {
+                showToast('❌ 주문번호가 중복되었습니다. 다시 주문해 주세요.');
+            } else {
+                showToast('❌ 주문 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+            }
+        } finally {
+            isSubmittingOrder = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.classList.remove('opacity-60', 'cursor-wait');
+                submitButton.innerHTML = originalButtonHtml;
+            }
         }
     };
 
