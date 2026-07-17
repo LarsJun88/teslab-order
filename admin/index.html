@@ -509,17 +509,17 @@
                 </div>
 
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
-                    <div class="flex items-center justify-between mb-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                         <div>
                             <h3 class="font-bold text-slate-900 text-base">상품 카탈로그 편집</h3>
                             <p class="text-xs text-slate-400">품목 정보를 추가하거나 파일을 업로드하면 사용자 몰 페이지에 즉시 적용됩니다.</p>
                         </div>
                         <div class="flex flex-wrap justify-end gap-2">
-                            <button type="button" onclick="optimizeAllProductImages()" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
-                                <i class="fa-solid fa-compress"></i> 전체 이미지 최적화
+                            <button type="button" onclick="optimizeAllProductImages()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
+                                <i class="fa-solid fa-images"></i> 상품 상세사진 전체 최적화
                             </button>
                             <button type="button" onclick="generateMissingThumbnails()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i> 전체 썸네일 생성
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> 목록 썸네일만 생성
                             </button>
                             <button type="button" onclick="openAddProductModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
                                 <i class="fa-solid fa-plus"></i> 신규 품목 추가
@@ -1229,6 +1229,41 @@
         return thumbnailUrl || String(product?.img || DEFAULT_IMAGE_URL);
     }
 
+    function getProductDetailImageUrl(product) {
+        return String(product?.detailImageUrl || product?.img || getProductThumbnailUrl(product));
+    }
+
+    function getProductOriginalExtraImages(product) {
+        return String(product?.extraImgs || '')
+            .split(/[\r\n,]+/)
+            .map(url => url.trim())
+            .filter(Boolean);
+    }
+
+    function getProductDetailExtraImages(product) {
+        const originalUrls = getProductOriginalExtraImages(product);
+        const optimizedUrls = Array.isArray(product?.detailExtraImgs) ? product.detailExtraImgs : [];
+
+        return originalUrls
+            .map((url, index) => String(optimizedUrls[index] || url).trim())
+            .filter(Boolean);
+    }
+
+    function isProductDetailOptimized(product) {
+        if (product?.imageOptimizationVersion === 1) return true;
+
+        const originalUrls = getProductOriginalExtraImages(product);
+        const optimizedUrls = Array.isArray(product?.detailExtraImgs) ? product.detailExtraImgs : [];
+        const mainReady = Boolean(String(product?.detailImageUrl || '').trim());
+        const extrasReady = originalUrls.every((url, index) => Boolean(String(optimizedUrls[index] || '').trim()));
+
+        return mainReady && extrasReady;
+    }
+
+    function needsProductDetailOptimization(product) {
+        return Boolean(product?.img) && !isProductDetailOptimized(product);
+    }
+
     function hydrateProductCardImages(container) {
         productImageObserver?.disconnect();
         const images = Array.from(container.querySelectorAll('img[data-src]'));
@@ -1404,9 +1439,13 @@
         }
 
         const imgEl = document.getElementById('detail-img');
-        imgEl.src = prod.img || '';
+        const primaryImageUrl = getProductDetailImageUrl(prod);
+        imgEl.loading = 'eager';
+        imgEl.fetchPriority = 'high';
+        imgEl.decoding = 'async';
+        imgEl.src = primaryImageUrl;
         imgEl.style.cursor = "zoom-in";
-        imgEl.onclick = () => openLightbox(prod.img, `${prod.name} 대표 이미지`);
+        imgEl.onclick = () => openLightbox(primaryImageUrl, `${prod.name} 대표 이미지`);
         imgEl.onerror = () => {
             imgEl.src = 'https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop';
         };
@@ -1424,12 +1463,9 @@
         if (extraImgsContainer) {
             extraImgsContainer.innerHTML = "";
 
-            if (prod.extraImgs && prod.extraImgs.trim().length > 0) {
-                const imgLinks = prod.extraImgs
-                    .split(/[\r\n,]+/)
-                    .map(url => url.trim())
-                    .filter(Boolean);
+            const imgLinks = getProductDetailExtraImages(prod);
 
+            if (imgLinks.length > 0) {
                 extraImgsContainer.innerHTML = imgLinks.map((url, index) => {
                     const safeUrl = url.replace(/'/g, "\\'");
                     const caption = `${prod.name || '상품'} 상세 이미지 ${index + 1}`;
@@ -1988,12 +2024,10 @@
                 renderAdminProducts();
                 startOrderNotificationListenerIfReady();
 
-                const pendingImageOptimizationCount = products.filter(
-                    product => product.img && product.imageOptimizationVersion !== 1
-                ).length;
+                const pendingImageOptimizationCount = products.filter(needsProductDetailOptimization).length;
                 if (pendingImageOptimizationCount > 0) {
                     setTimeout(() => {
-                        showToast(`${pendingImageOptimizationCount}개 상품의 상세 이미지가 원본입니다. 상품/공지에서 전체 이미지 최적화를 실행해 주세요.`);
+                        showToast(`${pendingImageOptimizationCount}개 상품의 상세사진이 원본입니다. 상품/공지에서 상품 상세사진 전체 최적화를 실행해 주세요.`);
                     }, 500);
                 }
             } else {
@@ -2557,7 +2591,7 @@
             const thumbnailUrl = prod.thumbnailUrl || prod.img || '../assets/product-placeholder.svg';
 
             return `
-            <div data-product-row="${idx}" ondragover="allowProductDrop(event, ${idx})" ondragleave="clearProductDrop(event)" ondrop="dropProduct(event, ${idx})" class="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-4 text-xs transition">
+            <div data-product-row="${idx}" ondragover="allowProductDrop(event, ${idx})" ondragleave="clearProductDrop(event)" ondrop="dropProduct(event, ${idx})" class="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs transition">
                 <div class="flex items-center gap-3 min-w-0">
                     <img src="${escapeHtml(thumbnailUrl)}" class="w-12 h-12 object-cover rounded-lg border bg-white shrink-0" loading="lazy" decoding="async" width="48" height="48" onerror="this.onerror=null;this.src='../assets/product-placeholder.svg'">
                     <div class="min-w-0">
@@ -2566,13 +2600,14 @@
                         <p class="text-[11px] text-slate-500">${Number(prod.price || 0).toLocaleString()}원 | 옵션 ${prod.options ? prod.options.length : 0}개</p>
                         <div class="flex flex-wrap gap-x-2 gap-y-0.5">
                             <span class="text-[10px] ${prod.thumbnailUrl ? 'text-emerald-600' : 'text-amber-600'} font-bold">${prod.thumbnailUrl ? '썸네일 적용' : '목록 원본 사용 중'}</span>
-                            <span class="text-[10px] ${prod.imageOptimizationVersion === 1 ? 'text-emerald-600' : 'text-amber-600'} font-bold">${prod.imageOptimizationVersion === 1 ? '상세 1080px' : '상세 원본 사용 중'}</span>
+                            <span class="text-[10px] ${isProductDetailOptimized(prod) ? 'text-emerald-600' : 'text-amber-600'} font-bold">${isProductDetailOptimized(prod) ? '상세사진 1080px 적용' : '상세사진 최적화 필요'}</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex gap-2 items-center shrink-0">
-                    <button type="button" onclick="generateThumbnailForProduct(${idx})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition">썸네일</button>
+                <div class="flex flex-wrap justify-end gap-2 items-center shrink-0 w-full sm:w-auto">
+                    <button type="button" onclick="optimizeProductDetailImages('${prod.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition">상세사진</button>
+                    <button type="button" onclick="generateThumbnailForProduct(${idx})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition">목록사진</button>
                     <button type="button" onclick="openEditProductModal(${idx})" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition">수정</button>
                     <button type="button" onclick="deleteProductConfig('${prod.id}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold transition">삭제</button>
                     <button type="button" draggable="true" ondragstart="startProductDrag(event, ${idx})" ondragend="endProductDrag(event)" title="드래그해서 순서 변경" class="w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing transition">
@@ -2846,7 +2881,26 @@
         if (editId) {
             updatedList = updatedList.map(p => {
                 if (p.id === editId) {
-                    return { ...p, itemNo, name, desc, detailSpec, price, img, thumbnailUrl, options, extraImgs };
+                    const mainImageChanged = String(p.img || '') !== img;
+                    const extraImagesChanged = String(p.extraImgs || '') !== extraImgs;
+                    const imageFieldsChanged = mainImageChanged || extraImagesChanged;
+
+                    return {
+                        ...p,
+                        itemNo,
+                        name,
+                        desc,
+                        detailSpec,
+                        price,
+                        img,
+                        thumbnailUrl,
+                        options,
+                        extraImgs,
+                        detailImageUrl: mainImageChanged ? '' : p.detailImageUrl,
+                        detailExtraImgs: extraImagesChanged ? [] : p.detailExtraImgs,
+                        detailImageOptimizationVersion: imageFieldsChanged ? 0 : p.detailImageOptimizationVersion,
+                        imageOptimizationVersion: imageFieldsChanged ? 0 : p.imageOptimizationVersion
+                    };
                 }
                 return p;
             });
@@ -3061,12 +3115,6 @@
         return response.blob();
     }
 
-    function parseProductImageUrls(value) {
-        return String(value || '')
-            .split(/[\r\n,]+/)
-            .map(url => url.trim())
-            .filter(Boolean);
-    }
 
     async function createThumbnailFile(imageUrl, productName) {
         return createOptimizedImageFile(await fetchImageBlob(imageUrl), productName, {
@@ -3161,6 +3209,141 @@
         showToast(`✅ 썸네일 생성 완료: ${successCount}개${failureCount ? `, 실패 ${failureCount}개` : ''}`);
     };
 
+    async function optimizeSingleProductDetailImages(productId, positionText = '') {
+        let product = products.find(item => item.id === productId);
+        if (!product?.img) {
+            return { complete: false, failureCount: 1, optimizedCount: 0 };
+        }
+
+        let failureCount = 0;
+        let optimizedCount = 0;
+        const originalExtraUrls = getProductOriginalExtraImages(product);
+
+        if (!String(product.detailImageUrl || '').trim()) {
+            try {
+                showToast(`상세 대표사진 최적화 중${positionText}: ${product.name}`);
+                const mainBlob = await fetchImageBlob(product.img);
+                const detailFile = await createOptimizedImageFile(mainBlob, product.name, {
+                    maxWidth: 1080,
+                    maxHeight: 1080,
+                    quality: 0.74,
+                    suffix: 'detail_1080'
+                });
+                const detailImageUrl = await uploadFileToStorage(detailFile);
+
+                await persistCatalogProducts(products.map(item => item.id === product.id ? {
+                    ...item,
+                    detailImageUrl,
+                    detailImageOptimizationVersion: 1
+                } : item));
+                optimizedCount += 1;
+                product = products.find(item => item.id === productId);
+
+                if (!String(product?.thumbnailUrl || '').trim()) {
+                    try {
+                        const thumbnailFile = await createOptimizedImageFile(mainBlob, product.name, {
+                            maxWidth: 480,
+                            maxHeight: 360,
+                            quality: 0.72,
+                            suffix: 'thumbnail'
+                        });
+                        const thumbnailUrl = await uploadFileToStorage(thumbnailFile);
+                        await persistCatalogProducts(products.map(item => item.id === product.id ? {
+                            ...item,
+                            thumbnailUrl
+                        } : item));
+                    } catch (thumbnailError) {
+                        console.warn(`Thumbnail generation failed for ${product.name}.`, thumbnailError);
+                    }
+                }
+            } catch (err) {
+                console.warn(`Detail representative image optimization failed for ${product.name}.`, err);
+                failureCount += 1;
+            }
+        }
+
+        product = products.find(item => item.id === productId);
+        const optimizedExtraUrls = Array.isArray(product?.detailExtraImgs)
+            ? [...product.detailExtraImgs]
+            : new Array(originalExtraUrls.length).fill('');
+
+        while (optimizedExtraUrls.length < originalExtraUrls.length) {
+            optimizedExtraUrls.push('');
+        }
+
+        for (let imageIndex = 0; imageIndex < originalExtraUrls.length; imageIndex += 1) {
+            if (String(optimizedExtraUrls[imageIndex] || '').trim()) continue;
+
+            try {
+                showToast(`상세 설명사진 ${imageIndex + 1}/${originalExtraUrls.length} 최적화 중${positionText}`);
+                const extraBlob = await fetchImageBlob(originalExtraUrls[imageIndex]);
+                const extraFile = await createOptimizedImageFile(extraBlob, product.name, {
+                    maxWidth: 1080,
+                    maxHeight: 1080,
+                    quality: 0.74,
+                    suffix: `detail_1080_${imageIndex + 1}`
+                });
+                optimizedExtraUrls[imageIndex] = await uploadFileToStorage(extraFile);
+
+                await persistCatalogProducts(products.map(item => item.id === product.id ? {
+                    ...item,
+                    detailExtraImgs: [...optimizedExtraUrls],
+                    detailImageOptimizationVersion: 1
+                } : item));
+                optimizedCount += 1;
+            } catch (err) {
+                console.warn(`Detail image ${imageIndex + 1} optimization failed for ${product.name}.`, err);
+                failureCount += 1;
+            }
+        }
+
+        product = products.find(item => item.id === productId);
+        const latestOptimizedExtras = Array.isArray(product?.detailExtraImgs) ? product.detailExtraImgs : [];
+        const complete = Boolean(String(product?.detailImageUrl || '').trim()) &&
+            originalExtraUrls.every((url, index) => Boolean(String(latestOptimizedExtras[index] || '').trim()));
+
+        if (product && product.detailImageOptimizationVersion !== (complete ? 2 : 1)) {
+            await persistCatalogProducts(products.map(item => item.id === product.id ? {
+                ...item,
+                detailImageOptimizationVersion: complete ? 2 : 1
+            } : item));
+        }
+
+        return { complete, failureCount, optimizedCount };
+    }
+
+    window.optimizeProductDetailImages = async function(productId) {
+        if (!isAdminAuthenticated) {
+            showToast('관리자 인증 후 이용할 수 있습니다.');
+            return;
+        }
+
+        if (isDemoMode || !storage) {
+            showToast('Firebase 연결 후 상세사진을 최적화할 수 있습니다.');
+            return;
+        }
+
+        const product = products.find(item => item.id === productId);
+        if (!product?.img) {
+            showToast('대표 이미지가 없는 상품입니다.');
+            return;
+        }
+
+        if (!needsProductDetailOptimization(product)) {
+            showToast('이 상품의 상세사진은 이미 1080px로 최적화되어 있습니다.');
+            return;
+        }
+
+        if (!confirm(`[${product.name}]의 대표사진과 상세 설명사진을 최대 1080px로 최적화할까요?\n\n원본과 사진 순서는 그대로 보존합니다.`)) {
+            return;
+        }
+
+        const result = await optimizeSingleProductDetailImages(productId);
+        showToast(result.complete
+            ? `상세사진 최적화 완료: ${product.name}`
+            : `일부 상세사진 변환 실패: ${product.name} (다시 실행하면 실패한 사진만 처리합니다.)`);
+    };
+
     window.optimizeAllProductImages = async function() {
         if (!isAdminAuthenticated) {
             showToast('관리자 인증 후 이용할 수 있습니다.');
@@ -3168,82 +3351,40 @@
         }
 
         if (isDemoMode || !storage) {
-            showToast('Firebase 연결 후 이미지를 최적화할 수 있습니다.');
+            showToast('Firebase 연결 후 상세사진을 최적화할 수 있습니다.');
             return;
         }
 
-        const targetProducts = products.filter(product => product.img && product.imageOptimizationVersion !== 1);
+        const targetProducts = products.filter(needsProductDetailOptimization);
         if (targetProducts.length === 0) {
-            showToast('모든 상품 이미지가 스마트폰용으로 최적화되어 있습니다.');
+            showToast('모든 상품의 상세사진이 스마트폰용 1080px로 최적화되어 있습니다.');
             return;
         }
 
         const confirmed = confirm(
-            `${targetProducts.length}개 상품의 대표·상세 이미지를 최대 1080px WebP로 최적화할까요?\n\n` +
-            '기존 원본 파일은 삭제하지 않고, 등록된 사진과 순서도 그대로 유지합니다.'
+            `${targetProducts.length}개 상품의 대표사진과 상세 설명사진을 최대 1080px WebP로 최적화할까요?\n\n` +
+            '목록 썸네일과 별도로 저장하며, 원본 파일과 사진 순서는 그대로 보존합니다.'
         );
         if (!confirmed) return;
 
-        let updatedProducts = [...products];
         let successCount = 0;
-        let failureCount = 0;
+        let partialFailureCount = 0;
 
         for (let productIndex = 0; productIndex < targetProducts.length; productIndex += 1) {
             const target = targetProducts[productIndex];
+            const positionText = ` (${productIndex + 1}/${targetProducts.length})`;
+            const result = await optimizeSingleProductDetailImages(target.id, positionText);
 
-            try {
-                showToast(`이미지 최적화 중 (${productIndex + 1}/${targetProducts.length}): ${target.name}`);
-                const currentProduct = updatedProducts.find(product => product.id === target.id) || target;
-                const mainBlob = await fetchImageBlob(currentProduct.img);
-                const [detailFile, thumbnailFile] = await Promise.all([
-                    createOptimizedImageFile(mainBlob, currentProduct.name, {
-                        maxWidth: 1080,
-                        maxHeight: 1080,
-                        quality: 0.74,
-                        suffix: 'detail_1080'
-                    }),
-                    createOptimizedImageFile(mainBlob, currentProduct.name, {
-                        maxWidth: 480,
-                        maxHeight: 360,
-                        quality: 0.72,
-                        suffix: 'thumbnail'
-                    })
-                ]);
-                const [optimizedMainUrl, thumbnailUrl] = await Promise.all([
-                    uploadFileToStorage(detailFile),
-                    uploadFileToStorage(thumbnailFile)
-                ]);
-                const optimizedExtraUrls = [];
-                const extraImageUrls = parseProductImageUrls(currentProduct.extraImgs);
-
-                for (let imageIndex = 0; imageIndex < extraImageUrls.length; imageIndex += 1) {
-                    const extraBlob = await fetchImageBlob(extraImageUrls[imageIndex]);
-                    const extraFile = await createOptimizedImageFile(extraBlob, currentProduct.name, {
-                        maxWidth: 1080,
-                        maxHeight: 1080,
-                        quality: 0.74,
-                        suffix: `detail_1080_${imageIndex + 1}`
-                    });
-                    optimizedExtraUrls.push(await uploadFileToStorage(extraFile));
-                }
-
-                updatedProducts = updatedProducts.map(product => product.id === currentProduct.id ? {
-                    ...product,
-                    img: optimizedMainUrl,
-                    thumbnailUrl,
-                    extraImgs: optimizedExtraUrls.join('\n'),
-                    imageOptimizationVersion: 1
-                } : product);
-
-                await persistCatalogProducts(updatedProducts);
+            if (result.complete) {
                 successCount += 1;
-            } catch (err) {
-                console.warn(`Image optimization failed for ${target.name}.`, err);
-                failureCount += 1;
+            } else {
+                partialFailureCount += 1;
             }
         }
 
-        showToast(`이미지 최적화 완료: ${successCount}개${failureCount ? `, 실패 ${failureCount}개` : ''}`);
+        showToast(
+            `상세사진 전체 최적화 완료: ${successCount}개${partialFailureCount ? `, 일부 실패 ${partialFailureCount}개` : ''}`
+        );
     };
 
     window.handleProductFileSelect = async function(input, targetId, isMultiple = false) {

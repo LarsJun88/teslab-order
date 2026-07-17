@@ -17,13 +17,13 @@ Existing products keep using `img` until a `thumbnailUrl` exists. That fallback 
 
 1. Open `/admin/` and authenticate.
 2. Open `상품/공지`.
-3. Select `전체 이미지 최적화` once to create a maximum 1080px WebP representative image, maximum 1080px WebP detail images, and a 480px WebP thumbnail for every existing product.
-4. The catalog switches to the optimized URLs after each product succeeds. Existing files remain in Firebase Storage and registered image order is preserved.
-5. `전체 썸네일 생성` remains available when only card thumbnails are needed, or use the per-product `썸네일` button.
-6. If an external image blocks browser conversion because of CORS, open `수정` and upload the image file directly.
-7. Confirm the product row shows `썸네일 적용`.
+3. Select `상품 상세사진 전체 최적화` once to create dedicated maximum 1080px WebP files for the representative image and every detail image.
+4. Each representative image and each detail image is saved immediately after it succeeds, so an interrupted run can resume without repeating completed images.
+5. Use `목록 썸네일만 생성` only for product-card thumbnails, or use the per-product `상세사진` and `목록사진` buttons.
+6. If an image fails, run the same detail optimization again; only missing optimized images are retried.
+7. Confirm the product row shows both `썸네일 적용` and `상세사진 1080px 적용`.
 
-The original Storage files are not deleted during migration. The catalog's `img` and `extraImgs` URLs are replaced with optimized copies, and `thumbnailUrl` is used for product cards.
+The original `img` and `extraImgs` catalog values and Storage files are preserved. Product detail and lightbox views prefer `detailImageUrl` and the position-matched `detailExtraImgs` array, while `thumbnailUrl` remains exclusive to product cards.
 
 New representative uploads are automatically converted to a maximum 1080px detail image and a 480px list thumbnail. New detail-image uploads are capped at 1080px. The detail modal and lightbox use the same 1080px optimized URLs instead of loading separate originals. Generated files prefer WebP, fall back to JPEG where WebP encoding is unavailable, and receive a one-year immutable browser cache header.
 

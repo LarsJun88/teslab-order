@@ -841,6 +841,22 @@
         return thumbnailUrl || String(product?.img || DEFAULT_IMAGE_URL);
     }
 
+    function getProductDetailImageUrl(product) {
+        return String(product?.detailImageUrl || product?.img || getProductThumbnailUrl(product));
+    }
+
+    function getProductDetailExtraImages(product) {
+        const originalUrls = String(product?.extraImgs || '')
+            .split(/[\r\n,]+/)
+            .map(url => url.trim())
+            .filter(Boolean);
+        const optimizedUrls = Array.isArray(product?.detailExtraImgs) ? product.detailExtraImgs : [];
+
+        return originalUrls
+            .map((url, index) => String(optimizedUrls[index] || url).trim())
+            .filter(Boolean);
+    }
+
     function hydrateProductCardImages(container) {
         productImageObserver?.disconnect();
         const images = Array.from(container.querySelectorAll('img[data-src]'));
@@ -1085,7 +1101,7 @@
         }
 
         const imgEl = document.getElementById('detail-img');
-        const primaryImageUrl = String(prod.img || getProductThumbnailUrl(prod));
+        const primaryImageUrl = getProductDetailImageUrl(prod);
         imgEl.loading = 'eager';
         imgEl.fetchPriority = 'high';
         imgEl.decoding = 'async';
@@ -1109,12 +1125,9 @@
         if (extraImgsContainer) {
             extraImgsContainer.innerHTML = "";
 
-            if (prod.extraImgs && prod.extraImgs.trim().length > 0) {
-                const imgLinks = prod.extraImgs
-                    .split(/[\r\n,]+/)
-                    .map(url => url.trim())
-                    .filter(Boolean);
+            const imgLinks = getProductDetailExtraImages(prod);
 
+            if (imgLinks.length > 0) {
                 extraImgsContainer.innerHTML = imgLinks.map((url, index) => {
                     const safeUrl = url.replace(/'/g, "\\'");
                     const caption = `${prod.name || '상품'} 상세 이미지 ${index + 1}`;
