@@ -3,15 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>롸쓰의 테슬랩 - 회원 전용 구매 센터</title>
+    <title>롸쓰의 테슬랩 - 관리자</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <!-- FontAwesome for Premium Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <!-- Daum Postcode API for Real Address Search -->
+    <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
             background-color: #f1f5f9;
         }
         .tab-active {
@@ -79,9 +84,9 @@
             <button onclick="switchTab('track-tab', 'view-track-order')" id="track-tab" class="px-2 sm:px-3 lg:px-4 h-full border-b-2 border-transparent text-xs sm:text-sm lg:text-base font-semibold text-slate-500 hover:text-slate-800 transition-all flex items-center gap-1.5">
                 <i class="fa-solid fa-magnifying-glass"></i> 구매조회
             </button>
-            <a href="./admin/" class="px-2 sm:px-3 lg:px-4 h-full border-b-2 border-transparent text-xs sm:text-sm lg:text-base font-semibold text-slate-500 hover:text-indigo-600 transition-all flex items-center gap-1.5">
+            <button onclick="switchTab('admin-tab', 'view-admin-dashboard')" id="admin-tab" class="px-2 sm:px-3 lg:px-4 h-full border-b-2 border-transparent text-xs sm:text-sm lg:text-base font-semibold text-slate-500 hover:text-indigo-600 transition-all flex items-center gap-1.5">
                 <i class="fa-solid fa-user-gear"></i> 관리자모드
-            </a>
+            </button>
         </nav>
     </div>
 </header>
@@ -335,6 +340,193 @@
         </div>
     </div>
 
+    <!-- VIEW 3: ADMIN DASHBOARD -->
+    <div id="view-admin-dashboard" class="space-y-6 hidden">
+        <div id="admin-auth-panel" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 max-w-sm mx-auto text-center space-y-4">
+            <i class="fa-solid fa-lock text-rose-500 text-3xl"></i>
+            <div>
+                <h3 class="font-bold text-slate-800 text-base">테슬랩 운영진 보안검증</h3>
+                <p class="text-[11px] text-slate-400 mt-1">관리자 비밀번호를 입력해 주세요.</p>
+            </div>
+            <input type="password" id="admin_key" placeholder="비밀번호 입력" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm outline-none focus:border-indigo-500">
+            <button onclick="authenticateAdmin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                보안 인증 및 대시보드 진입
+            </button>
+        </div>
+
+        <div id="admin-content-panel" class="hidden space-y-6">
+            <div class="flex border-b border-slate-200 bg-white p-2 rounded-xl shadow-sm gap-2">
+                <button onclick="switchAdminSubTab('orders')" id="subtab-orders" class="flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition">
+                    <i class="fa-solid fa-rectangle-list mr-1.5"></i> 주문 관리
+                </button>
+                <button onclick="switchAdminSubTab('stats')" id="subtab-stats" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition">
+                    <i class="fa-solid fa-chart-pie mr-1.5"></i> 통계
+                </button>
+                <button onclick="switchAdminSubTab('products')" id="subtab-products" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition">
+                    <i class="fa-solid fa-tags mr-1.5"></i> 상품/공지
+                </button>
+            </div>
+
+            <!-- Admin Orders Sub-Tab -->
+            <div id="admin-section-orders" class="space-y-6">
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">총 주문 건수</span>
+                            <span class="text-xl font-extrabold text-slate-800" id="stat-total-orders">0건</span>
+                        </div>
+                        <i class="fa-solid fa-clipboard-list text-indigo-500 text-xl bg-indigo-50 p-2.5 rounded-lg"></i>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">누적 구매액</span>
+                            <span class="text-xl font-extrabold text-slate-800" id="stat-total-sales">0원</span>
+                        </div>
+                        <i class="fa-solid fa-won-sign text-emerald-500 text-xl bg-emerald-50 p-2.5 rounded-lg"></i>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">제주 배송지</span>
+                            <span class="text-xl font-extrabold text-slate-800" id="stat-island-count">0건</span>
+                        </div>
+                        <i class="fa-solid fa-ship text-amber-500 text-xl bg-amber-50 p-2.5 rounded-lg"></i>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">입금 대기</span>
+                            <span class="text-xl font-extrabold text-slate-800" id="stat-pending-orders">0건</span>
+                        </div>
+                        <i class="fa-solid fa-hourglass-half text-rose-500 text-xl bg-rose-50 p-2.5 rounded-lg"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-base">주문 신청서 리스트</h3>
+                            <p class="text-xs text-slate-400">실시간 주문 관리 영역입니다.</p>
+                        </div>
+                        <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+                            <button type="button" id="order-notification-btn" onclick="enableOrderNotifications()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-bell"></i> 주문 알림 켜기
+                            </button>
+                            <button onclick="downloadExcelCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-file-excel"></i> CSV 다운로드
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                            <tr class="bg-slate-50 text-slate-400 font-bold text-[10px] sm:text-xs uppercase border-b border-slate-100">
+                                <th class="p-4">주문번호 / 일시</th>
+                                <th class="p-4">신청자</th>
+                                <th class="p-4">선택 품목</th>
+                                <th class="p-4">금액</th>
+                                <th class="p-4">배송 주소</th>
+                                <th class="p-4 text-center">상태 / 송장 / 삭제</th>
+                            </tr>
+                            </thead>
+                            <tbody id="admin-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
+                            <tr>
+                                <td colspan="6" class="p-8 text-center text-slate-400">데이터를 불러오는 중입니다...</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Stats Sub-Tab -->
+            <div id="admin-section-stats" class="space-y-6 hidden">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-base mb-1">📊 통계</h3>
+                            <p class="text-xs text-slate-400">전체, 월별, 년도별로 주문 수량과 판매 금액을 확인합니다.</p>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <div class="flex gap-2 bg-slate-50 border border-slate-100 p-1 rounded-xl">
+                                <button type="button" onclick="switchStatsMode('all')" id="stats-mode-all" class="px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition">전체</button>
+                                <button type="button" onclick="switchStatsMode('month')" id="stats-mode-month" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">월별</button>
+                                <button type="button" onclick="switchStatsMode('year')" id="stats-mode-year" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">년도별</button>
+                            </div>
+                            <div id="stats-period-controls" class="hidden">
+                                <select id="stats-period-select" onchange="changeStatsPeriod(this.value)" class="w-full sm:w-40 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                        <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">조회 기준</span>
+                            <span class="text-base font-extrabold text-slate-800" id="stats-current-label">전체</span>
+                        </div>
+                        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-indigo-500 block uppercase">총 주문 수량</span>
+                            <span class="text-base font-extrabold text-indigo-900" id="stats-summary-qty">0개</span>
+                        </div>
+                        <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-emerald-600 block uppercase">판매 금액</span>
+                            <span class="text-base font-extrabold text-emerald-900" id="stats-summary-sales">0원</span>
+                            <span class="text-[10px] font-semibold text-emerald-600 block mt-1" id="stats-summary-orders">0건 주문</span>
+                        </div>
+                    </div>
+
+                    <div id="stats-chart-container" class="space-y-4 max-w-xl mx-auto py-4"></div>
+                    <div class="mt-8 overflow-x-auto">
+                        <h4 class="font-bold text-slate-800 text-xs mb-3 uppercase tracking-wider">상세 집계</h4>
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                            <tr class="bg-slate-50 text-slate-400 font-bold border-b border-slate-100">
+                                <th class="p-3">품목</th>
+                                <th class="p-3 text-right">총 주문량</th>
+                                <th class="p-3 text-right">매출액</th>
+                            </tr>
+                            </thead>
+                            <tbody id="stats-table-body" class="divide-y divide-slate-100 text-slate-700 font-semibold"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Products & Memo Manager Sub-Tab -->
+            <div id="admin-section-products" class="space-y-6 hidden">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <h3 class="font-bold text-slate-900 text-base mb-1">회원 유의사항/공지 설정</h3>
+                    <p class="text-xs text-slate-400 mb-4">상품 리스트 상단에 표시되는 공지 문구입니다.</p>
+                    <div class="space-y-3">
+                        <textarea id="admin-notice-input" rows="3" class="w-full rounded-xl border border-slate-200 p-3 text-xs focus:border-indigo-500 outline-none transition font-medium text-slate-700" placeholder="안내 문구를 적어주세요."></textarea>
+                        <div class="flex justify-end">
+                            <button type="button" onclick="saveNoticeConfig()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition">
+                                <i class="fa-solid fa-floppy-disk mr-1"></i> 공지 저장
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-base">상품 카탈로그 편집</h3>
+                            <p class="text-xs text-slate-400">품목 정보를 추가하거나 파일을 업로드하면 사용자 몰 페이지에 즉시 적용됩니다.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="generateMissingThumbnails()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> 썸네일 생성
+                            </button>
+                            <button type="button" onclick="openAddProductModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
+                                <i class="fa-solid fa-plus"></i> 신규 품목 추가
+                            </button>
+                        </div>
+                    </div>
+                    <div id="admin-products-container" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </main>
 
 <footer class="bg-slate-900 text-slate-400 text-center py-6 mt-12 border-t border-slate-800 text-xs">
@@ -522,6 +714,98 @@
     </div>
 </div>
 
+<!-- Product Edit/Add Admin Modal -->
+<div id="product-edit-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+        <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+            <h3 id="product-modal-title" class="font-bold text-slate-800 text-sm">신규 품목 추가</h3>
+            <button type="button" onclick="closeModal('product-edit-modal')" class="p-1 rounded-lg hover:bg-slate-200 transition text-slate-400">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div class="p-5 space-y-3 max-h-[70vh] overflow-y-auto text-xs">
+            <input type="hidden" id="edit-prod-id">
+
+            <div>
+                <label class="block font-bold text-slate-600 mb-1">상품 번호</label>
+                <input type="text" id="edit-prod-itemno" placeholder="ITEM 01" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block font-bold text-slate-600 mb-1">상품명</label>
+                <input type="text" id="edit-prod-name" placeholder="상품 이름" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block font-bold text-slate-600 mb-1">상품 설명</label>
+                <input type="text" id="edit-prod-desc" placeholder="상세 설명" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block font-bold text-slate-600 mb-1">상세 스펙 설명</label>
+                <textarea id="edit-prod-detail-spec" rows="5" placeholder="상세보기 > 상세 스펙 탭에 표시될 설명을 입력하세요." class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 leading-relaxed"></textarea>
+                <span class="text-[10px] text-slate-400">줄바꿈이 그대로 상세페이지에 반영됩니다.</span>
+            </div>
+            <div>
+                <label class="block font-bold text-slate-600 mb-1">기본 가격</label>
+                <input type="number" id="edit-prod-price" placeholder="12000" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+            </div>
+
+            <div class="space-y-1">
+                <label class="block font-bold text-slate-600">대표 이미지</label>
+                <div class="flex gap-2 items-center">
+                    <input type="text" id="edit-prod-img" placeholder="https://..." class="flex-grow rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 text-xs font-mono">
+                    <label for="edit-prod-img-file" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-2.5 rounded-lg cursor-pointer transition whitespace-nowrap">
+                        업로드
+                    </label>
+                    <input type="file" id="edit-prod-img-file" accept="image/*" class="hidden" onchange="handleProductFileSelect(this, 'edit-prod-img')">
+                </div>
+                <div id="img-upload-spinner" class="hidden text-[10px] text-indigo-600 mt-1 font-semibold">
+                    <i class="fa-solid fa-spinner animate-spin"></i> 업로드 중...
+                </div>
+            </div>
+
+            <div class="space-y-1">
+                <label class="block font-bold text-slate-600">목록 썸네일</label>
+                <div class="flex gap-2 items-center">
+                    <input type="text" id="edit-prod-thumbnail" placeholder="400px WebP 권장" class="flex-grow rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 text-xs font-mono">
+                    <label for="edit-prod-thumbnail-file" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-2.5 rounded-lg cursor-pointer transition whitespace-nowrap">
+                        업로드
+                    </label>
+                    <input type="file" id="edit-prod-thumbnail-file" accept="image/*" class="hidden" onchange="handleProductFileSelect(this, 'edit-prod-thumbnail')">
+                </div>
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-[10px] text-slate-400">목록에는 이 이미지가 먼저 로딩됩니다.</span>
+                    <button type="button" onclick="generateThumbnailForEditingProduct()" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-700">대표 이미지에서 자동 생성</button>
+                </div>
+            </div>
+            <div>
+                <label class="block font-bold text-slate-600 mb-1">옵션 목록</label>
+                <textarea id="edit-prod-options" rows="3" placeholder="블랙&#10;레드&#10;신형 (+5,000원)&#10;할인형 (-2,000원)" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono"></textarea>
+            </div>
+
+            <div class="space-y-1 mt-3">
+                <label class="block font-bold text-slate-600">상세 이미지 URL</label>
+                <textarea id="edit-prod-extra-imgs" rows="3" placeholder="https://..." oninput="renderExtraImageManager()" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono text-xs"></textarea>
+                <div class="flex justify-between items-center gap-2">
+                    <span id="extra-img-count" class="text-[10px] text-slate-400 font-bold">0개</span>
+                    <label for="edit-prod-extra-file" class="bg-slate-800 hover:bg-slate-700 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg cursor-pointer transition">
+                        사진 다중 업로드
+                    </label>
+                    <input type="file" id="edit-prod-extra-file" accept="image/*" class="hidden" multiple onchange="handleProductFileSelect(this, 'edit-prod-extra-imgs', true)">
+                </div>
+                <div id="extra-img-manager" class="space-y-2 pt-1"></div>
+                <div id="extra-upload-spinner" class="hidden text-[10px] text-indigo-600 mt-1 font-semibold">
+                    <i class="fa-solid fa-spinner animate-spin"></i> 업로드 중...
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 text-xs">
+            <button type="button" onclick="closeModal('product-edit-modal')" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition">취소</button>
+            <button type="button" onclick="saveProductConfig()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold">저장</button>
+        </div>
+    </div>
+</div>
+
 <!-- Order Success Receipt Modal -->
 <div id="success-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
@@ -648,9 +932,18 @@
         doc,
         getDoc,
         setDoc,
+        updateDoc,
+        deleteDoc,
         collection,
-        getDocs
+        getDocs,
+        onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import {
+        getStorage,
+        ref,
+        uploadBytes,
+        getDownloadURL
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyAGqFb_3nbwIShXC5VYX0ZPwtQGnVw0ytI",
@@ -663,16 +956,20 @@
 
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'tkc-co-order-2026';
 
+    // bbjh9132!! 의 SHA-256 해시값 지정 (이전 오타 해시값도 함께 지원하여 절대 안 팅기도록 보정함)
+    const ADMIN_PASSWORD_HASH = "6080fc41ca9310da4a4cbc54052c79d89f8bea0cdaf2b3f121a7f9ff5e8584ef";
 
     let app = null;
     let auth = null;
     let db = null;
+    let storage = null;
     let isDemoMode = false;
     let currentUser = null;
 
     let localOrders = [];
     let localReviews = [];
     let globalOrders = [];
+    let isAdminAuthenticated = false;
 
     let localNotice = "필독사항: 본 전용 파츠는 맞춤 제작 상품으로, 입금 확인 이후 순차 제작됩니다.";
 
@@ -823,51 +1120,22 @@
     let cart = [];
     let isIslandShipping = false;
     const shippingDefault = 4000;
-    const DEFAULT_IMAGE_URL = "./assets/product-placeholder.svg";
-    let postcodeScriptPromise = null;
-
-    function escapeHtml(value) {
-        return String(value ?? '').replace(/[&<>"']/g, char => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;'
-        }[char]));
-    }
-
-    // Existing products use img until an admin creates thumbnailUrl. Replace those
-    // fallbacks with real 400px WebP thumbnails to reach the 1-3MB visit target.
-    function getProductThumbnailUrl(product) {
-        const thumbnailUrl = String(product?.thumbnailUrl || '').trim();
-        return thumbnailUrl || String(product?.img || DEFAULT_IMAGE_URL);
-    }
-
-    function loadDaumPostcodeScript() {
-        if (window.daum?.Postcode) return Promise.resolve();
-        if (postcodeScriptPromise) return postcodeScriptPromise;
-
-        postcodeScriptPromise = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
-            script.async = true;
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('Daum postcode API failed to load.'));
-            document.head.appendChild(script);
-        });
-
-        return postcodeScriptPromise;
-    }
 
     let activeProduct = null;
     let activeDetailQty = 1;
     let selectedInteractiveRating = 5;
     let verifiedReviewerProfile = null;
+    let draggedProductIndex = null;
+    let draggedExtraImageIndex = null;
+    let orderNotificationUnsubscribe = null;
+    let activeStatsMode = "all";
+    let activeStatsPeriod = "";
 
     try {
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         db = getFirestore(app);
+        storage = getStorage(app);
     } catch (err) {
         console.warn("Firebase init failed. Demo mode active.", err);
         isDemoMode = true;
@@ -885,8 +1153,8 @@
 
     window.addEventListener('DOMContentLoaded', () => {
         renderNoticeUI(localNotice);
-        renderProductsUI();
         calculateCartTotals();
+        switchTab('admin-tab', 'view-admin-dashboard');
         runAuth();
     });
 
@@ -919,6 +1187,13 @@
             renderProductsUI();
             renderNoticeUI(localNotice);
         }
+    }
+
+    async function sha256(message) {
+        const msgBuffer = new TextEncoder().encode(message);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
     function parseExtraCost(optionString) {
@@ -971,36 +1246,63 @@
 
         const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
         const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
+        const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
 
         try {
-            const [noticeSnap, catalogSnap] = await Promise.all([
-                getDoc(noticeDocRef),
-                getDoc(catalogDocRef)
-            ]);
+            const securitySnap = await getDoc(securityDocRef);
+
+            if (securitySnap.exists()) {
+                const savedHash = securitySnap.data().adminHash || ADMIN_PASSWORD_HASH;
+                if (savedHash !== ADMIN_PASSWORD_HASH) {
+                    await setDoc(securityDocRef, { adminHash: ADMIN_PASSWORD_HASH });
+                }
+            } else {
+                await setDoc(securityDocRef, { adminHash: ADMIN_PASSWORD_HASH });
+            }
+
+            const noticeSnap = await getDoc(noticeDocRef);
 
             if (noticeSnap.exists()) {
                 localNotice = noticeSnap.data().text || localNotice;
                 localStorage.setItem('teslap_notice_cache', localNotice);
-            }
-
-            if (catalogSnap.exists()) {
-                const remoteProducts = catalogSnap.data().products || [];
-                if (Array.isArray(remoteProducts) && remoteProducts.length > 0) {
-                    products = remoteProducts;
-                    localStorage.setItem('teslap_products_cache', JSON.stringify(products));
-                }
+            } else {
+                await setDoc(noticeDocRef, { text: localNotice });
             }
 
             renderNoticeUI(localNotice);
-            renderProductsUI();
+
+            const catalogSnap = await getDoc(catalogDocRef);
+
+            if (catalogSnap.exists()) {
+                let remoteProducts = catalogSnap.data().products || [];
+
+                if (!Array.isArray(remoteProducts) || remoteProducts.length < 5) {
+                    await setDoc(catalogDocRef, { products: localProducts });
+                    remoteProducts = localProducts;
+                }
+
+                products = remoteProducts;
+                localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+            } else {
+                await setDoc(catalogDocRef, { products: localProducts });
+                products = localProducts;
+                localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+            }
+
+            renderAdminProducts();
         } catch (err) {
-            console.error("Firestore catalog load failure. Using cache.", err);
+            console.error("Firestore config load failure. Using cache.", err);
         }
     }
+
     function renderNoticeUI(text) {
         const display = document.getElementById('notice-text-display');
+        const input = document.getElementById('admin-notice-input');
+
         if (display) display.textContent = text;
+        if (input) input.value = text;
     }
+
     function renderProductsUI() {
         const listContainer = document.getElementById('dynamic-product-list');
 
@@ -1009,19 +1311,14 @@
             return;
         }
 
-        listContainer.innerHTML = products.map((prod, index) => {
+        listContainer.innerHTML = products.map(prod => {
             const soldOut = isProductSoldOut(prod);
-            const thumbnailUrl = getProductThumbnailUrl(prod);
-            const isInitialThumbnail = index < 3;
-            const safeName = escapeHtml(prod.name || '상품');
-            const safeDescription = escapeHtml(prod.desc || '');
-            const safeItemNo = escapeHtml(prod.itemNo || '');
 
             return `
             <div class="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group ${soldOut ? 'opacity-80' : ''}" onclick="openProductDetailModal('${prod.id}')">
                 <div class="relative aspect-[4/3] bg-slate-50 border-b border-slate-50 overflow-hidden shrink-0">
-                    <img src="${escapeHtml(thumbnailUrl)}" alt="${safeName}" class="w-full h-full object-cover img-zoom" loading="${isInitialThumbnail ? 'eager' : 'lazy'}" ${isInitialThumbnail ? 'fetchpriority="high"' : ''} decoding="async" width="400" height="300" onerror="this.onerror=null;this.src='${DEFAULT_IMAGE_URL}'">
-                    <span class="absolute top-2.5 left-2.5 bg-slate-900/80 backdrop-blur-sm text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${safeItemNo}</span>
+                    <img src="${prod.img || ''}" alt="${prod.name}" class="w-full h-full object-cover img-zoom" onerror="this.src='https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop'">
+                    <span class="absolute top-2.5 left-2.5 bg-slate-900/80 backdrop-blur-sm text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${prod.itemNo || ''}</span>
                     ${soldOut ? `<span class="absolute top-2.5 right-2.5 bg-rose-600 text-white font-black text-[10px] px-2 py-1 rounded-md shadow">품절</span>` : ''}
                     <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center">
                         <span class="bg-white text-slate-950 text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5">
@@ -1030,8 +1327,8 @@
                     </div>
                 </div>
                 <div class="p-4 space-y-1.5">
-                    <h3 class="font-bold text-slate-800 text-sm sm:text-base group-hover:text-indigo-600 transition leading-tight">${safeName}</h3>
-                    <p class="text-xs text-slate-400 truncate">${safeDescription}</p>
+                    <h3 class="font-bold text-slate-800 text-sm sm:text-base group-hover:text-indigo-600 transition leading-tight">${prod.name}</h3>
+                    <p class="text-xs text-slate-400 truncate">${prod.desc || ''}</p>
                     <div class="flex items-center justify-between pt-1">
                         <span class="text-sm font-black text-slate-950">${Number(prod.price || 0).toLocaleString()}원</span>
                         <span class="text-[10px] ${soldOut ? 'text-rose-600 bg-rose-50' : 'text-indigo-600 bg-indigo-50/70'} font-bold px-2 py-1 rounded">${soldOut ? '품절' : '옵션지원'}</span>
@@ -1041,6 +1338,7 @@
         `;
         }).join('');
     }
+
     window.openProductDetailModal = function(prodId) {
         const prod = products.find(p => p.id === prodId);
         if (!prod) return;
@@ -1060,17 +1358,13 @@
         }
 
         const imgEl = document.getElementById('detail-img');
-        const primaryImageUrl = String(prod.img || getProductThumbnailUrl(prod));
-        imgEl.loading = 'eager';
-        imgEl.fetchPriority = 'high';
-        imgEl.decoding = 'async';
-        imgEl.src = primaryImageUrl;
+        imgEl.src = prod.img || '';
         imgEl.style.cursor = "zoom-in";
-        imgEl.onclick = () => openLightbox(primaryImageUrl, `${prod.name} 대표 이미지`);
+        imgEl.onclick = () => openLightbox(prod.img, `${prod.name} 대표 이미지`);
         imgEl.onerror = () => {
-            imgEl.onerror = null;
-            imgEl.src = DEFAULT_IMAGE_URL;
+            imgEl.src = 'https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop';
         };
+
         const selectEl = document.getElementById('detail-opt-select');
         const opts = Array.isArray(prod.options) && prod.options.length > 0 ? prod.options : ["기본형"];
         selectEl.innerHTML = `<option value="">-- 옵션을 선택해 주세요 --</option>` + opts.map(opt => {
@@ -1096,7 +1390,7 @@
 
                     return `
                         <div class="rounded-xl overflow-hidden border border-slate-100 bg-slate-50 relative group cursor-zoom-in aspect-[4/3]" onclick="openLightbox('${safeUrl}', '${caption}')">
-                            <img src="${escapeHtml(url)}" class="w-full h-full object-cover img-zoom" loading="${index === 0 ? 'eager' : 'lazy'}" ${index === 0 ? 'fetchpriority="high"' : ''} decoding="async" width="800" height="600" onerror="this.closest('div').remove()">
+                            <img src="${url}" class="w-full h-full object-cover img-zoom" onerror="this.closest('div').remove()">
                             <div class="absolute bottom-0 left-0 right-0 bg-slate-900/60 text-white text-[10px] px-2 py-1 opacity-0 group-hover:opacity-100 transition">
                                 클릭해서 확대 보기
                             </div>
@@ -1122,14 +1416,9 @@
 
     window.closeProductDetailModal = function() {
         document.getElementById('detail-page-modal').classList.add('hidden');
-        const detailImage = document.getElementById('detail-img');
-        const extraImages = document.getElementById('detail-extra-images');
-
-        detailImage.removeAttribute('src');
-        detailImage.onclick = null;
-        if (extraImages) extraImages.innerHTML = '';
         activeProduct = null;
     };
+
     window.switchDetailTab = function(tabName) {
         const descBtn = document.getElementById('detail-tab-desc');
         const policyBtn = document.getElementById('detail-tab-policy');
@@ -1304,36 +1593,31 @@
         showToast(isIslandShipping ? "🚢 도서산간 배송비가 추가되었습니다." : "도서산간 배송비가 해제되었습니다.");
     };
 
-    window.execDaumPostcode = async function() {
-        try {
-            await loadDaumPostcodeScript();
-            new window.daum.Postcode({
-                oncomplete: function(data) {
-                    const addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
+    window.execDaumPostcode = function() {
+        new daum.Postcode({
+            oncomplete: function(data) {
+                const addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
 
-                    document.getElementById('postal_code').value = data.zonecode;
-                    document.getElementById('address_basic').value = addr;
-                    document.getElementById('address_detail').focus();
+                document.getElementById('postal_code').value = data.zonecode;
+                document.getElementById('address_basic').value = addr;
+                document.getElementById('address_detail').focus();
 
-                    const islandToggle = document.getElementById('island-toggle');
+                const islandToggle = document.getElementById('island-toggle');
 
-                    if (data.zonecode.startsWith('63')) {
-                        islandToggle.checked = true;
-                        isIslandShipping = true;
-                        showToast("📍 제주 지역 감지로 추가 배송비가 적용되었습니다.");
-                    } else {
-                        islandToggle.checked = false;
-                        isIslandShipping = false;
-                    }
-
-                    calculateCartTotals();
+                if (data.zonecode.startsWith('63')) {
+                    islandToggle.checked = true;
+                    isIslandShipping = true;
+                    showToast("📍 제주 지역 감지로 추가 배송비가 적용되었습니다.");
+                } else {
+                    islandToggle.checked = false;
+                    isIslandShipping = false;
                 }
-            }).open();
-        } catch (err) {
-            console.error('Daum postcode load failed.', err);
-            showToast("❌ 우편번호 서비스를 불러오지 못했습니다.");
-        }
+
+                calculateCartTotals();
+            }
+        }).open();
     };
+
     window.enableManualAddress = function() {
         const basicInput = document.getElementById('address_basic');
         const postalInput = document.getElementById('postal_code');
@@ -1626,6 +1910,1160 @@
         }).join('');
     }
 
+    window.authenticateAdmin = async function() {
+        const passwordInput = document.getElementById('admin_key').value.trim();
+
+        if (!passwordInput) {
+            showToast("⚠️ 관리자 비밀번호를 입력해 주세요.");
+            return;
+        }
+
+        try {
+            const enteredHash = await sha256(passwordInput);
+
+            if (enteredHash === ADMIN_PASSWORD_HASH) {
+                isAdminAuthenticated = true;
+
+                document.getElementById('admin-auth-panel').classList.add('hidden');
+                document.getElementById('admin-content-panel').classList.remove('hidden');
+
+                showToast("🔑 관리자 인증 성공");
+
+                if (!isDemoMode && db) {
+                    try {
+                        const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
+                        await setDoc(securityDocRef, { adminHash: ADMIN_PASSWORD_HASH });
+                    } catch (dbErr) {
+                        console.warn("Password hash sync failed.", dbErr);
+                    }
+                }
+
+                await loadAdminOrders();
+                renderAdminProducts();
+                startOrderNotificationListenerIfReady();
+            } else {
+                showToast("❌ 비밀번호가 일치하지 않습니다.");
+            }
+        } catch (err) {
+            console.error("Admin auth exception.", err);
+            showToast("❌ 인증 도중 오류가 발생했습니다.");
+        }
+    };
+
+    function updateOrderNotificationButton(isEnabled) {
+        const button = document.getElementById('order-notification-btn');
+        if (!button) return;
+
+        button.className = isEnabled
+            ? "w-full sm:w-auto bg-slate-900 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5"
+            : "w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5";
+        button.innerHTML = isEnabled
+            ? `<i class="fa-solid fa-bell"></i> 주문 알림 켜짐`
+            : `<i class="fa-solid fa-bell"></i> 주문 알림 켜기`;
+    }
+
+    function showNewOrderNotification(order) {
+        const ordererName = order.ordererName || "주문자";
+        const totalAmount = Number(order.finalTotal || 0).toLocaleString();
+        const title = "새 주문 접수";
+        const body = `${ordererName}님 / ${totalAmount}원`;
+
+        showToast(`🔔 ${body}`);
+
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+        }
+
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+        try {
+            new Notification(title, {
+                body,
+                tag: order.orderId || `order-${Date.now()}`
+            });
+        } catch (err) {
+            console.warn("Browser notification failed.", err);
+        }
+    }
+
+    function startOrderNotificationListenerIfReady() {
+        if (!isAdminAuthenticated || isDemoMode || !db) return;
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        if (orderNotificationUnsubscribe) {
+            updateOrderNotificationButton(true);
+            return;
+        }
+
+        let isInitialSnapshot = true;
+        const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+
+        orderNotificationUnsubscribe = onSnapshot(ordersRef, snapshot => {
+            if (isInitialSnapshot) {
+                isInitialSnapshot = false;
+                updateOrderNotificationButton(true);
+                return;
+            }
+
+            snapshot.docChanges().forEach(change => {
+                if (change.type !== 'added') return;
+                showNewOrderNotification(change.doc.data());
+            });
+        }, err => {
+            console.error("Order notification listener failed.", err);
+            orderNotificationUnsubscribe = null;
+            updateOrderNotificationButton(false);
+            showToast("❌ 주문 알림 연결이 끊겼습니다.");
+        });
+    }
+
+    window.enableOrderNotifications = async function() {
+        if (!isAdminAuthenticated) {
+            showToast("❌ 관리자 인증 후 알림을 켤 수 있습니다.");
+            return;
+        }
+
+        if (isDemoMode || !db) {
+            showToast("❌ 온라인 데이터 연결 후 알림을 사용할 수 있습니다.");
+            return;
+        }
+
+        if (!("Notification" in window)) {
+            showToast("❌ 이 브라우저는 알림 기능을 지원하지 않습니다.");
+            return;
+        }
+
+        let permission = Notification.permission;
+
+        if (permission === "default") {
+            permission = await Notification.requestPermission();
+        }
+
+        if (permission !== "granted") {
+            updateOrderNotificationButton(false);
+            showToast("❌ 브라우저 알림 권한이 허용되지 않았습니다.");
+            return;
+        }
+
+        startOrderNotificationListenerIfReady();
+        showToast("🔔 주문 알림이 켜졌습니다.");
+    };
+
+    async function loadAdminOrders() {
+        const tbody = document.getElementById('admin-table-body');
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="p-8 text-center text-slate-400">
+                    <i class="fa-solid fa-spinner animate-spin text-xl mb-2 block text-indigo-500"></i>
+                    <span>데이터 동기화 중...</span>
+                </td>
+            </tr>
+        `;
+
+        if (isDemoMode) {
+            globalOrders = [...localOrders];
+            renderAdminOrdersUI(globalOrders);
+            return;
+        }
+
+        try {
+            const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+            const querySnapshot = await getDocs(ordersRef);
+
+            globalOrders = [];
+            querySnapshot.forEach(docSnap => {
+                globalOrders.push(docSnap.data());
+            });
+
+            renderAdminOrdersUI(globalOrders);
+        } catch (err) {
+            console.error("Admin order load failed. Local fallback.", err);
+            globalOrders = [...localOrders];
+            renderAdminOrdersUI(globalOrders);
+        }
+    }
+
+    function renderAdminOrdersUI(orders) {
+        const tbody = document.getElementById('admin-table-body');
+
+        orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        const totalCount = orders.length;
+        const totalSum = orders.reduce((acc, order) => acc + Number(order.finalTotal || 0), 0);
+        const islandCount = orders.filter(order => order.isIslandShipping).length;
+        const pendingCount = orders.filter(order => order.status === "입금대기").length;
+
+        document.getElementById('stat-total-orders').textContent = `${totalCount}건`;
+        document.getElementById('stat-total-sales').textContent = `${totalSum.toLocaleString()}원`;
+        document.getElementById('stat-island-count').textContent = `${islandCount}건`;
+        document.getElementById('stat-pending-orders').textContent = `${pendingCount}건`;
+
+        if (orders.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">접수된 주문이 없습니다.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = orders.map(order => {
+            const cartOverview = order.cart.map(itm => `${itm.optionName} x${itm.quantity}`).join('<br>');
+
+            return `
+                <tr class="hover:bg-slate-50 transition border-b border-slate-100 last:border-0 text-xs">
+                    <td class="p-3 text-slate-500 font-mono">
+                        <span class="font-bold text-slate-800 block">${order.orderId}</span>
+                        <span class="text-[10px] block text-slate-400">${order.createdAt}</span>
+                    </td>
+                    <td class="p-3">
+                        <span class="font-bold text-slate-800 block">${order.ordererName}</span>
+                        <span class="text-[10px] text-indigo-600 block font-semibold">@${order.ordererNickname}</span>
+                        <span class="text-[10px] text-amber-700 block font-medium">차량: ${order.ordererCarInfo || '미기입'}</span>
+                        <span class="text-[10px] text-slate-400 block">${order.ordererPhone}</span>
+                    </td>
+                    <td class="p-3 leading-relaxed text-[11px] font-medium text-slate-600 font-mono">${cartOverview}</td>
+                    <td class="p-3">
+                        <span class="font-bold text-slate-900 block font-mono">${Number(order.finalTotal || 0).toLocaleString()}원</span>
+                        <span class="text-[10px] text-slate-400 block">입금자: ${order.depositorName}</span>
+                    </td>
+                    <td class="p-3 max-w-[200px] truncate leading-normal text-[11px]">
+                        <p class="text-slate-700 truncate font-semibold" title="${order.addressBasic} ${order.addressDetail}">[${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
+                        <p class="text-[10px] text-amber-600 italic truncate" title="${order.shippingMemo}">메모: ${order.shippingMemo}</p>
+                    </td>
+                    <td class="p-3 text-center space-y-2 max-w-[170px]">
+                        <select onchange="updateOrderStatus('${order.orderId}', this.value)" class="rounded border border-slate-200 px-2 py-1 text-[11px] font-bold focus:border-indigo-500 bg-white">
+                            <option value="입금대기" ${order.status === "입금대기" ? "selected" : ""}>입금대기</option>
+                            <option value="입금완료" ${order.status === "입금완료" ? "selected" : ""}>입금완료</option>
+                            <option value="배송준비" ${order.status === "배송준비" ? "selected" : ""}>배송준비</option>
+                            <option value="배송중" ${order.status === "배송중" ? "selected" : ""}>배송중</option>
+                            <option value="배송완료" ${order.status === "배송완료" ? "selected" : ""}>배송완료</option>
+                        </select>
+
+                        <div class="space-y-1 bg-slate-50 p-2 rounded-lg border border-slate-200 text-left">
+                            <select id="courier-select-${order.orderId}" class="w-full rounded border border-slate-200 px-1 py-0.5 text-[10px] font-semibold bg-white">
+                                <option value="한진택배" ${order.courier === "한진택배" ? "selected" : ""}>한진택배</option>
+                                <option value="CJ대한통운" ${order.courier === "CJ대한통운" ? "selected" : ""}>CJ대한통운</option>
+                                <option value="롯데택배" ${order.courier === "롯데택배" ? "selected" : ""}>롯데택배</option>
+                                <option value="우체국" ${order.courier === "우체국" ? "selected" : ""}>우체국</option>
+                            </select>
+
+                            <div class="flex gap-1">
+                                <input type="text" id="tracking-input-${order.orderId}" value="${order.trackingNumber || ''}" placeholder="송장번호" class="w-full text-center font-mono rounded border border-slate-200 px-1 py-1 text-[10px] outline-none focus:border-indigo-500 bg-white">
+                                <button onclick="saveTrackingNumber('${order.orderId}')" class="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold shrink-0 hover:bg-slate-800 transition">저장</button>
+                            </div>
+                        </div>
+
+                        <button onclick="deleteOrder('${order.orderId}')" class="w-full px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-extrabold transition border border-rose-100">
+                            <i class="fa-solid fa-trash-can mr-1"></i> 주문 삭제
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    window.updateOrderStatus = async function(orderId, newStatus) {
+        if (isDemoMode) {
+            const order = localOrders.find(o => o.orderId === orderId);
+            if (order) order.status = newStatus;
+
+            showToast(`✅ 상태가 [${newStatus}]로 변경되었습니다.`);
+            loadAdminOrders();
+            return;
+        }
+
+        try {
+            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+            await updateDoc(orderRef, { status: newStatus });
+
+            showToast(`✅ 상태가 [${newStatus}]로 변경되었습니다.`);
+            loadAdminOrders();
+        } catch (err) {
+            console.error("Status update failed.", err);
+            showToast("❌ 상태 변경 실패");
+        }
+    };
+
+    window.saveTrackingNumber = async function(orderId) {
+        const trackingVal = document.getElementById(`tracking-input-${orderId}`).value.trim();
+        const courierVal = document.getElementById(`courier-select-${orderId}`).value;
+
+        if (isDemoMode) {
+            const order = localOrders.find(o => o.orderId === orderId);
+
+            if (order) {
+                order.trackingNumber = trackingVal;
+                order.courier = courierVal;
+                if (trackingVal) order.status = "배송중";
+            }
+
+            showToast("✅ 송장 정보가 저장되었습니다.");
+            loadAdminOrders();
+            return;
+        }
+
+        try {
+            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+            const updates = {
+                trackingNumber: trackingVal,
+                courier: courierVal
+            };
+
+            if (trackingVal) updates.status = "배송중";
+
+            await updateDoc(orderRef, updates);
+
+            showToast("✅ 송장 정보가 저장되었습니다.");
+            loadAdminOrders();
+        } catch (err) {
+            console.error("Tracking save failed.", err);
+            showToast("❌ 송장 저장 실패");
+        }
+    };
+
+    window.deleteOrder = async function(orderId) {
+        if (!isAdminAuthenticated) {
+            showToast("❌ 관리자 인증 후 이용할 수 있습니다.");
+            return;
+        }
+
+        const targetOrder =
+            globalOrders.find(order => order.orderId === orderId) ||
+            localOrders.find(order => order.orderId === orderId);
+
+        const orderInfoText = targetOrder
+            ? `${targetOrder.ordererName || '주문자'} / ${Number(targetOrder.finalTotal || 0).toLocaleString()}원`
+            : orderId;
+
+        const confirmDelete = confirm(
+            `정말 이 주문을 삭제할까요?\n\n주문번호: ${orderId}\n주문정보: ${orderInfoText}\n\n삭제된 주문은 복구할 수 없습니다.`
+        );
+
+        if (!confirmDelete) return;
+
+        if (isDemoMode) {
+            localOrders = localOrders.filter(order => order.orderId !== orderId);
+            globalOrders = globalOrders.filter(order => order.orderId !== orderId);
+
+            renderAdminOrdersUI(globalOrders);
+            showToast("🗑️ 주문이 삭제되었습니다.");
+            return;
+        }
+
+        try {
+            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+            await deleteDoc(orderRef);
+
+            globalOrders = globalOrders.filter(order => order.orderId !== orderId);
+
+            renderAdminOrdersUI(globalOrders);
+            showToast("🗑️ 주문이 삭제되었습니다.");
+        } catch (err) {
+            console.error("Order delete failed.", err);
+            showToast("❌ 주문 삭제 중 오류가 발생했습니다.");
+        }
+    };
+
+    function getOrderDate(order) {
+        const source = order.timestamp || order.createdAt || "";
+        const parsed = new Date(source);
+
+        if (Number.isNaN(parsed.getTime())) {
+            return null;
+        }
+
+        return parsed;
+    }
+
+    function getStatsPeriodKey(order, mode) {
+        const orderDate = getOrderDate(order);
+
+        if (!orderDate) {
+            return "unknown";
+        }
+
+        const year = String(orderDate.getFullYear());
+        const month = String(orderDate.getMonth() + 1).padStart(2, '0');
+
+        if (mode === "year") {
+            return year;
+        }
+
+        return `${year}-${month}`;
+    }
+
+    function getStatsPeriodLabel(key, mode) {
+        if (!key || key === "unknown") {
+            return "날짜 없음";
+        }
+
+        if (mode === "year") {
+            return `${key}년`;
+        }
+
+        const [year, month] = key.split("-");
+        return `${year}년 ${Number(month)}월`;
+    }
+
+    function getStatsModeButtonClass(isActive) {
+        return isActive
+            ? "px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition"
+            : "px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition";
+    }
+
+    function renderStatsControls(orders) {
+        const allBtn = document.getElementById('stats-mode-all');
+        const monthBtn = document.getElementById('stats-mode-month');
+        const yearBtn = document.getElementById('stats-mode-year');
+        const periodControls = document.getElementById('stats-period-controls');
+        const periodSelect = document.getElementById('stats-period-select');
+
+        if (allBtn) allBtn.className = getStatsModeButtonClass(activeStatsMode === "all");
+        if (monthBtn) monthBtn.className = getStatsModeButtonClass(activeStatsMode === "month");
+        if (yearBtn) yearBtn.className = getStatsModeButtonClass(activeStatsMode === "year");
+
+        if (!periodControls || !periodSelect) return;
+
+        if (activeStatsMode === "all") {
+            activeStatsPeriod = "";
+            periodControls.classList.add('hidden');
+            periodSelect.innerHTML = "";
+            return;
+        }
+
+        const periods = Array.from(new Set(
+            orders.map(order => getStatsPeriodKey(order, activeStatsMode))
+        )).sort((a, b) => {
+            if (a === "unknown") return 1;
+            if (b === "unknown") return -1;
+            return b.localeCompare(a);
+        });
+
+        if (periods.length === 0) {
+            activeStatsPeriod = "";
+            periodControls.classList.add('hidden');
+            periodSelect.innerHTML = "";
+            return;
+        }
+
+        if (!activeStatsPeriod || !periods.includes(activeStatsPeriod)) {
+            activeStatsPeriod = periods[0];
+        }
+
+        periodSelect.innerHTML = periods.map(period => `
+            <option value="${period}" ${period === activeStatsPeriod ? "selected" : ""}>${getStatsPeriodLabel(period, activeStatsMode)}</option>
+        `).join('');
+        periodControls.classList.remove('hidden');
+    }
+
+    function getOrdersForActiveStatsMode(orders) {
+        if (activeStatsMode === "all") {
+            return [...orders];
+        }
+
+        if (!activeStatsPeriod) {
+            return [];
+        }
+
+        return orders.filter(order => getStatsPeriodKey(order, activeStatsMode) === activeStatsPeriod);
+    }
+
+    function getCurrentStatsLabel() {
+        if (activeStatsMode === "all") {
+            return "전체";
+        }
+
+        return getStatsPeriodLabel(activeStatsPeriod, activeStatsMode);
+    }
+
+    window.switchStatsMode = function(mode) {
+        activeStatsMode = mode;
+        activeStatsPeriod = "";
+        renderAdminStatistics();
+    };
+
+    window.changeStatsPeriod = function(period) {
+        activeStatsPeriod = period;
+        renderAdminStatistics();
+    };
+
+    async function renderAdminStatistics() {
+        const chartContainer = document.getElementById('stats-chart-container');
+        const tableBody = document.getElementById('stats-table-body');
+        const summaryQty = document.getElementById('stats-summary-qty');
+        const summarySales = document.getElementById('stats-summary-sales');
+        const summaryOrders = document.getElementById('stats-summary-orders');
+        const currentLabel = document.getElementById('stats-current-label');
+
+        chartContainer.innerHTML = `
+            <div class="text-center py-6 text-slate-400">
+                <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block text-indigo-500"></i>
+                <span>통계 산출 중...</span>
+            </div>
+        `;
+
+        try {
+            if (isDemoMode) {
+                globalOrders = [...localOrders];
+            } else if (globalOrders.length === 0 && db) {
+                const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+                const querySnapshot = await getDocs(ordersRef);
+
+                globalOrders = [];
+                querySnapshot.forEach(docSnap => {
+                    globalOrders.push(docSnap.data());
+                });
+            }
+        } catch (err) {
+            console.warn("Stats fallback.", err);
+            globalOrders = [...localOrders];
+        }
+
+        renderStatsControls(globalOrders);
+
+        const targetOrders = getOrdersForActiveStatsMode(globalOrders);
+        const stats = {};
+
+        products.forEach(p => {
+            stats[p.name] = { count: 0, sales: 0 };
+        });
+
+        let totalQty = 0;
+        let totalSales = 0;
+
+        targetOrders.forEach(order => {
+            if (!order.cart || !Array.isArray(order.cart)) return;
+
+            order.cart.forEach(item => {
+                const cleanName = String(item.optionName || '미분류').split(" (")[0];
+                const quantity = Number(item.quantity || 0);
+                const lineSales = Number(item.unitPrice || 0) * quantity;
+
+                if (!stats[cleanName]) {
+                    stats[cleanName] = { count: 0, sales: 0 };
+                }
+
+                stats[cleanName].count += quantity;
+                stats[cleanName].sales += lineSales;
+                totalQty += quantity;
+                totalSales += lineSales;
+            });
+        });
+
+        if (summaryQty) summaryQty.textContent = `${totalQty.toLocaleString()}개`;
+        if (summarySales) summarySales.textContent = `${totalSales.toLocaleString()}원`;
+        if (summaryOrders) summaryOrders.textContent = `${targetOrders.length.toLocaleString()}건 주문`;
+        if (currentLabel) currentLabel.textContent = getCurrentStatsLabel();
+
+        if (totalQty === 0) {
+            chartContainer.innerHTML = `<div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl">${escapeHtml(getCurrentStatsLabel())} 기준 주문 데이터가 없습니다.</div>`;
+            tableBody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-400">주문 데이터가 없습니다.</td></tr>`;
+            return;
+        }
+
+        const sortedStats = Object.entries(stats)
+            .filter(([, val]) => val.count > 0)
+            .sort((a, b) => b[1].count - a[1].count);
+        const maxVal = Math.max(...sortedStats.map(s => s[1].count), 1);
+
+        chartContainer.innerHTML = sortedStats.map(([name, val], index) => {
+            const percent = (val.count / maxVal) * 100;
+            const barColors = ['bg-indigo-600', 'bg-violet-500', 'bg-purple-500', 'bg-pink-500', 'bg-emerald-500'];
+            const barColor = barColors[index % barColors.length];
+
+            return `
+                <div class="space-y-1 text-xs">
+                    <div class="flex justify-between gap-4 font-semibold">
+                        <span class="text-slate-700 truncate">${escapeHtml(name)}</span>
+                        <span class="text-slate-900 font-bold shrink-0">${val.count.toLocaleString()}개 <span class="text-[10px] text-slate-400 font-normal">(${val.sales.toLocaleString()}원)</span></span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden">
+                        <div class="${barColor} h-full rounded-full transition-all duration-500" style="width: ${percent}%"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        tableBody.innerHTML = sortedStats.map(([name, val]) => `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                <td class="p-3 font-semibold text-slate-800">${escapeHtml(name)}</td>
+                <td class="p-3 text-right font-bold text-slate-900">${val.count.toLocaleString()}개</td>
+                <td class="p-3 text-right font-mono text-indigo-600 font-bold">${val.sales.toLocaleString()}원</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderAdminProducts() {
+        const container = document.getElementById('admin-products-container');
+
+        if (!products || products.length === 0) {
+            container.innerHTML = `<div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl">상품이 없습니다.</div>`;
+            return;
+        }
+
+        container.innerHTML = products.map((prod, idx) => {
+            const thumbnailUrl = prod.thumbnailUrl || prod.img || '../assets/product-placeholder.svg';
+
+            return `
+            <div data-product-row="${idx}" ondragover="allowProductDrop(event, ${idx})" ondragleave="clearProductDrop(event)" ondrop="dropProduct(event, ${idx})" class="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-4 text-xs transition">
+                <div class="flex items-center gap-3 min-w-0">
+                    <img src="${escapeHtml(thumbnailUrl)}" class="w-12 h-12 object-cover rounded-lg border bg-white shrink-0" loading="lazy" decoding="async" width="48" height="48" onerror="this.onerror=null;this.src='../assets/product-placeholder.svg'">
+                    <div class="min-w-0">
+                        <span class="font-mono text-indigo-600 font-bold block">${escapeHtml(prod.itemNo || '')}</span>
+                        <strong class="text-slate-800 text-sm font-bold block truncate">${escapeHtml(prod.name || '')}</strong>
+                        <p class="text-[11px] text-slate-500">${Number(prod.price || 0).toLocaleString()}원 | 옵션 ${prod.options ? prod.options.length : 0}개</p>
+                        <span class="text-[10px] ${prod.thumbnailUrl ? 'text-emerald-600' : 'text-amber-600'} font-bold">${prod.thumbnailUrl ? '썸네일 적용' : '원본 사용 중'}</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-2 items-center shrink-0">
+                    <button type="button" onclick="generateThumbnailForProduct(${idx})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition">썸네일</button>
+                    <button type="button" onclick="openEditProductModal(${idx})" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition">수정</button>
+                    <button type="button" onclick="deleteProductConfig('${prod.id}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold transition">삭제</button>
+                    <button type="button" draggable="true" ondragstart="startProductDrag(event, ${idx})" ondragend="endProductDrag(event)" title="드래그해서 순서 변경" class="w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing transition">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        }).join('');
+    }
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
+    function moveArrayItem(items, fromIndex, toIndex) {
+        const nextItems = [...items];
+        const [movedItem] = nextItems.splice(fromIndex, 1);
+        nextItems.splice(toIndex, 0, movedItem);
+        return nextItems;
+    }
+
+    function applyProductsOrder(updatedProducts) {
+        products = updatedProducts;
+        localProducts = updatedProducts;
+        localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+        renderAdminProducts();
+        renderProductsUI();
+    }
+
+    async function saveProductOrderConfig(previousProducts) {
+        if (isDemoMode) {
+            showToast("✅ 상품 순서가 변경되었습니다.");
+            return true;
+        }
+
+        try {
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            await setDoc(catalogDocRef, { products });
+            showToast("✅ 상품 순서가 저장되었습니다.");
+            return true;
+        } catch (err) {
+            console.error("Product order save failed.", err);
+            applyProductsOrder(previousProducts);
+            showToast("❌ 상품 순서 저장 실패");
+            return false;
+        }
+    }
+
+    window.startProductDrag = function(event, index) {
+        draggedProductIndex = index;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(index));
+
+        const row = event.currentTarget.closest('[data-product-row]');
+        if (row) row.classList.add('opacity-60');
+    };
+
+    window.allowProductDrop = function(event, index) {
+        if (draggedProductIndex === null || draggedProductIndex === index) return;
+
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        event.currentTarget.classList.add('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.clearProductDrop = function(event) {
+        event.currentTarget.classList.remove('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.dropProduct = async function(event, targetIndex) {
+        event.preventDefault();
+        window.clearProductDrop(event);
+
+        const transferredIndex = event.dataTransfer.getData('text/plain');
+        const fromIndex = transferredIndex !== '' ? Number(transferredIndex) : draggedProductIndex;
+        draggedProductIndex = null;
+
+        if (!Number.isInteger(fromIndex) || fromIndex === targetIndex || fromIndex < 0 || targetIndex < 0) return;
+        if (fromIndex >= products.length || targetIndex >= products.length) return;
+
+        const previousProducts = [...products];
+        const updatedProducts = moveArrayItem(products, fromIndex, targetIndex);
+        applyProductsOrder(updatedProducts);
+        await saveProductOrderConfig(previousProducts);
+    };
+
+    window.endProductDrag = function(event) {
+        draggedProductIndex = null;
+        const row = event.currentTarget.closest('[data-product-row]');
+        if (row) row.classList.remove('opacity-60');
+    };
+
+    function getExtraImageUrls() {
+        const textarea = document.getElementById('edit-prod-extra-imgs');
+        if (!textarea) return [];
+
+        return textarea.value
+            .split(/[\r\n,]+/)
+            .map(url => url.trim())
+            .filter(Boolean);
+    }
+
+    function setExtraImageUrls(urls) {
+        const textarea = document.getElementById('edit-prod-extra-imgs');
+        if (!textarea) return;
+
+        textarea.value = urls.join('\n');
+        window.renderExtraImageManager();
+    }
+
+    window.renderExtraImageManager = function() {
+        const manager = document.getElementById('extra-img-manager');
+        const count = document.getElementById('extra-img-count');
+        if (!manager || !count) return;
+
+        const urls = getExtraImageUrls();
+        count.textContent = `${urls.length}개`;
+
+        if (urls.length === 0) {
+            manager.innerHTML = `
+                <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-center text-[10px] font-semibold text-slate-400">
+                    상세 이미지가 없습니다.
+                </div>
+            `;
+            return;
+        }
+
+        manager.innerHTML = urls.map((url, index) => {
+            const escapedUrl = escapeHtml(url);
+            const fileLabel = url.split('/').pop()?.split('?')[0] || url;
+
+            return `
+                <div data-extra-img-row="${index}" ondragover="allowExtraImageDrop(event, ${index})" ondragleave="clearExtraImageDrop(event)" ondrop="dropExtraImage(event, ${index})" class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 transition">
+                    <div class="w-12 h-12 rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0">
+                        <img src="${escapedUrl}" alt="" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <span class="block text-[10px] font-black text-indigo-600">상세 이미지 ${index + 1}</span>
+                        <span class="block truncate text-[10px] font-mono text-slate-500" title="${escapedUrl}">${escapeHtml(fileLabel)}</span>
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                        <button type="button" onclick="removeExtraImage(${index})" title="삭제" class="w-8 h-8 rounded-lg border border-rose-100 bg-white text-rose-500 hover:bg-rose-50 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                        <button type="button" draggable="true" ondragstart="startExtraImageDrag(event, ${index})" ondragend="endExtraImageDrag(event)" title="드래그해서 순서 변경" class="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing transition">
+                            <i class="fa-solid fa-bars"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+
+    window.startExtraImageDrag = function(event, index) {
+        draggedExtraImageIndex = index;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(index));
+
+        const row = event.currentTarget.closest('[data-extra-img-row]');
+        if (row) row.classList.add('opacity-60');
+    };
+
+    window.allowExtraImageDrop = function(event, index) {
+        if (draggedExtraImageIndex === null || draggedExtraImageIndex === index) return;
+
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        event.currentTarget.classList.add('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.clearExtraImageDrop = function(event) {
+        event.currentTarget.classList.remove('border-indigo-300', 'bg-indigo-50');
+    };
+
+    window.dropExtraImage = function(event, targetIndex) {
+        event.preventDefault();
+        window.clearExtraImageDrop(event);
+
+        const urls = getExtraImageUrls();
+        const transferredIndex = event.dataTransfer.getData('text/plain');
+        const fromIndex = transferredIndex !== '' ? Number(transferredIndex) : draggedExtraImageIndex;
+        draggedExtraImageIndex = null;
+
+        if (!Number.isInteger(fromIndex) || fromIndex === targetIndex || fromIndex < 0 || targetIndex < 0) return;
+        if (fromIndex >= urls.length || targetIndex >= urls.length) return;
+
+        setExtraImageUrls(moveArrayItem(urls, fromIndex, targetIndex));
+    };
+
+    window.endExtraImageDrag = function(event) {
+        draggedExtraImageIndex = null;
+        const row = event.currentTarget.closest('[data-extra-img-row]');
+        if (row) row.classList.remove('opacity-60');
+    };
+
+    window.removeExtraImage = function(index) {
+        const urls = getExtraImageUrls();
+        urls.splice(index, 1);
+        setExtraImageUrls(urls);
+    };
+
+    window.openAddProductModal = function() {
+        document.getElementById('product-modal-title').textContent = "신규 품목 추가";
+        document.getElementById('edit-prod-id').value = "";
+        document.getElementById('edit-prod-itemno').value = `ITEM ${String(products.length + 1).padStart(2, '0')}`;
+        document.getElementById('edit-prod-name').value = "";
+        document.getElementById('edit-prod-desc').value = "";
+        document.getElementById('edit-prod-detail-spec').value = "";
+        document.getElementById('edit-prod-price').value = "";
+        document.getElementById('edit-prod-img').value = "";
+        document.getElementById('edit-prod-thumbnail').value = "";
+        document.getElementById('edit-prod-options').value = "";
+        document.getElementById('edit-prod-extra-imgs').value = "";
+        window.renderExtraImageManager();
+
+        openModal('product-edit-modal');
+    };
+
+    window.openEditProductModal = function(index) {
+        const prod = products[index];
+
+        document.getElementById('product-modal-title').textContent = "품목 수정";
+        document.getElementById('edit-prod-id').value = prod.id;
+        document.getElementById('edit-prod-itemno').value = prod.itemNo || "";
+        document.getElementById('edit-prod-name').value = prod.name || "";
+        document.getElementById('edit-prod-desc').value = prod.desc || "";
+        document.getElementById('edit-prod-detail-spec').value = prod.detailSpec || prod.desc || "";
+        document.getElementById('edit-prod-price').value = prod.price || "";
+        document.getElementById('edit-prod-img').value = prod.img || "";
+        document.getElementById('edit-prod-thumbnail').value = prod.thumbnailUrl || "";
+        // 문자열 오타 유발 요소를 \n 제어로 전환하여 SyntaxError 원천 소멸
+        document.getElementById('edit-prod-options').value = Array.isArray(prod.options) ? prod.options.join('\n') : "";
+        document.getElementById('edit-prod-extra-imgs').value = prod.extraImgs || "";
+        window.renderExtraImageManager();
+
+        openModal('product-edit-modal');
+    };
+
+    window.saveProductConfig = async function() {
+        const editId = document.getElementById('edit-prod-id').value;
+        const itemNo = document.getElementById('edit-prod-itemno').value.trim();
+        const name = document.getElementById('edit-prod-name').value.trim();
+        const desc = document.getElementById('edit-prod-desc').value.trim();
+        const detailSpec = document.getElementById('edit-prod-detail-spec').value.trim();
+        const price = parseInt(document.getElementById('edit-prod-price').value, 10);
+        const img = document.getElementById('edit-prod-img').value.trim();
+        const thumbnailUrl = document.getElementById('edit-prod-thumbnail').value.trim();
+        const optionsRaw = document.getElementById('edit-prod-options').value.trim();
+        const extraImgs = document.getElementById('edit-prod-extra-imgs').value.trim();
+
+        if (!itemNo || !name || isNaN(price)) {
+            showToast("❌ 상품번호, 상품명, 가격은 필수입니다.");
+            return;
+        }
+
+        const options = optionsRaw.split(/\r?\n/).map(o => o.trim()).filter(Boolean);
+
+        if (options.length === 0) {
+            showToast("❌ 최소 1개 이상의 옵션을 입력해 주세요.");
+            return;
+        }
+
+        let updatedList = [...products];
+
+        if (editId) {
+            updatedList = updatedList.map(p => {
+                if (p.id === editId) {
+                    return { ...p, itemNo, name, desc, detailSpec, price, img, thumbnailUrl, options, extraImgs };
+                }
+                return p;
+            });
+        } else {
+            updatedList.push({
+                id: `p_${Date.now()}`,
+                itemNo,
+                name,
+                desc,
+                detailSpec,
+                price,
+                img,
+                thumbnailUrl,
+                options,
+                extraImgs
+            });
+        }
+
+        if (isDemoMode) {
+            products = updatedList;
+            localProducts = updatedList;
+            localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+
+            closeModal('product-edit-modal');
+            renderAdminProducts();
+            renderProductsUI();
+            showToast("✅ 상품 정보가 저장되었습니다.");
+            return;
+        }
+
+        try {
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            await setDoc(catalogDocRef, { products: updatedList });
+
+            products = updatedList;
+            localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+
+            closeModal('product-edit-modal');
+            renderAdminProducts();
+            renderProductsUI();
+            showToast("✅ 상품 정보가 저장되었습니다.");
+        } catch (err) {
+            console.error("Product save failed.", err);
+            showToast("❌ 상품 저장 실패");
+        }
+    };
+
+    window.deleteProductConfig = async function(prodId) {
+        if (!confirm("정말 이 상품을 삭제할까요?")) return;
+
+        const updatedList = products.filter(p => p.id !== prodId);
+
+        if (isDemoMode) {
+            products = updatedList;
+            localProducts = updatedList;
+            localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+
+            renderAdminProducts();
+            renderProductsUI();
+            showToast("🗑️ 상품이 삭제되었습니다.");
+            return;
+        }
+
+        try {
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            await setDoc(catalogDocRef, { products: updatedList });
+
+            products = updatedList;
+            localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+
+            renderAdminProducts();
+            renderProductsUI();
+            showToast("🗑️ 상품이 삭제되었습니다.");
+        } catch (err) {
+            console.error("Product delete failed.", err);
+            showToast("❌ 상품 삭제 실패");
+        }
+    };
+
+    window.saveNoticeConfig = async function() {
+        const newNoticeText = document.getElementById('admin-notice-input').value.trim();
+
+        if (!newNoticeText) {
+            showToast("❌ 공지 내용은 비워둘 수 없습니다.");
+            return;
+        }
+
+        if (isDemoMode) {
+            localNotice = newNoticeText;
+            localStorage.setItem('teslap_notice_cache', localNotice);
+            renderNoticeUI(localNotice);
+            showToast("✅ 공지가 저장되었습니다.");
+            return;
+        }
+
+        try {
+            const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
+            await setDoc(noticeDocRef, { text: newNoticeText });
+
+            localNotice = newNoticeText;
+            localStorage.setItem('teslap_notice_cache', localNotice);
+
+            renderNoticeUI(localNotice);
+            showToast("✅ 공지가 저장되었습니다.");
+        } catch (err) {
+            console.error("Notice save failed.", err);
+            showToast("❌ 공지 저장 실패");
+        }
+    };
+
+    async function uploadFileToStorage(file) {
+        if (isDemoMode || !storage) {
+            return URL.createObjectURL(file);
+        }
+
+        const safeFileName = file.name
+            .replace(/\s+/g, '_')
+            .replace(/[^\w.\-가-힣]/g, '');
+
+        const storageRef = ref(storage, `artifacts/${appId}/public/data/images/${Date.now()}_${safeFileName}`);
+
+        await uploadBytes(storageRef, file);
+
+        return await getDownloadURL(storageRef);
+    }
+
+    async function createThumbnailFile(imageUrl, productName) {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error(`Image download failed: ${response.status}`);
+
+        const sourceBlob = await response.blob();
+        const sourceImage = await createImageBitmap(sourceBlob);
+        const maxWidth = 480;
+        const maxHeight = 360;
+        const scale = Math.min(1, maxWidth / sourceImage.width, maxHeight / sourceImage.height);
+        const width = Math.max(1, Math.round(sourceImage.width * scale));
+        const height = Math.max(1, Math.round(sourceImage.height * scale));
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(sourceImage, 0, 0, width, height);
+        sourceImage.close?.();
+
+        const thumbnailBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.78));
+        if (!thumbnailBlob) throw new Error('Thumbnail encoding failed.');
+
+        const safeName = String(productName || 'product').replace(/[^\w-]+/g, '_');
+        return new File([thumbnailBlob], `${safeName}_thumbnail.webp`, { type: 'image/webp' });
+    }
+
+    async function persistCatalogProducts(updatedProducts) {
+        if (!isDemoMode) {
+            const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+            await setDoc(catalogDocRef, { products: updatedProducts });
+        }
+
+        products = updatedProducts;
+        localProducts = updatedProducts;
+        localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+        renderAdminProducts();
+        renderProductsUI();
+    }
+
+    window.generateThumbnailForEditingProduct = async function() {
+        const imageUrl = document.getElementById('edit-prod-img').value.trim();
+        const productName = document.getElementById('edit-prod-name').value.trim();
+
+        if (!imageUrl) {
+            showToast("⚠️ 먼저 대표 이미지 URL을 입력하거나 업로드해 주세요.");
+            return;
+        }
+
+        try {
+            showToast("썸네일을 생성하고 있습니다...");
+            const thumbnailFile = await createThumbnailFile(imageUrl, productName);
+            const thumbnailUrl = await uploadFileToStorage(thumbnailFile);
+            document.getElementById('edit-prod-thumbnail').value = thumbnailUrl;
+            showToast("✅ 480px WebP 썸네일을 생성했습니다.");
+        } catch (err) {
+            console.error('Thumbnail generation failed.', err);
+            showToast("❌ 자동 생성에 실패했습니다. 썸네일 파일을 직접 업로드해 주세요.");
+        }
+    };
+
+    window.generateThumbnailForProduct = async function(index) {
+        const product = products[index];
+        if (!product?.img) {
+            showToast("❌ 대표 이미지가 없는 상품입니다.");
+            return;
+        }
+
+        try {
+            showToast(`썸네일 생성 중: ${product.name}`);
+            const thumbnailFile = await createThumbnailFile(product.img, product.name);
+            const thumbnailUrl = await uploadFileToStorage(thumbnailFile);
+            const updatedProducts = products.map((item, itemIndex) => itemIndex === index ? { ...item, thumbnailUrl } : item);
+            await persistCatalogProducts(updatedProducts);
+            showToast("✅ 목록용 WebP 썸네일을 저장했습니다.");
+        } catch (err) {
+            console.error('Thumbnail generation failed.', err);
+            showToast("❌ 자동 생성에 실패했습니다. 수정 화면에서 썸네일을 직접 업로드해 주세요.");
+        }
+    };
+
+    window.generateMissingThumbnails = async function() {
+        const targetProducts = products.filter(product => product.img && !product.thumbnailUrl);
+        if (targetProducts.length === 0) {
+            showToast("✅ 모든 상품에 썸네일이 설정되어 있습니다.");
+            return;
+        }
+
+        if (!confirm(`${targetProducts.length}개 상품의 480px WebP 썸네일을 생성할까요?`)) return;
+
+        let updatedProducts = [...products];
+        let successCount = 0;
+        let failureCount = 0;
+
+        for (const product of targetProducts) {
+            try {
+                showToast(`썸네일 생성 중 (${successCount + failureCount + 1}/${targetProducts.length})`);
+                const thumbnailFile = await createThumbnailFile(product.img, product.name);
+                const thumbnailUrl = await uploadFileToStorage(thumbnailFile);
+                updatedProducts = updatedProducts.map(item => item.id === product.id ? { ...item, thumbnailUrl } : item);
+                successCount += 1;
+            } catch (err) {
+                console.warn(`Thumbnail generation failed for ${product.name}.`, err);
+                failureCount += 1;
+            }
+        }
+
+        if (successCount > 0) await persistCatalogProducts(updatedProducts);
+        showToast(`✅ 썸네일 생성 완료: ${successCount}개${failureCount ? `, 실패 ${failureCount}개` : ''}`);
+    };
+    window.handleProductFileSelect = async function(input, targetId, isMultiple = false) {
+        const files = input.files;
+
+        if (!files || files.length === 0) return;
+
+        const spinnerId = isMultiple ? 'extra-upload-spinner' : 'img-upload-spinner';
+        const spinner = document.getElementById(spinnerId);
+
+        if (spinner) spinner.classList.remove('hidden');
+
+        try {
+            if (isMultiple) {
+                const urls = [];
+
+                for (let i = 0; i < files.length; i++) {
+                    const url = await uploadFileToStorage(files[i]);
+                    urls.push(url);
+                }
+
+                const textarea = document.getElementById(targetId);
+                const existing = textarea.value.trim();
+
+                textarea.value = existing ? existing + '\n' + urls.join('\n') : urls.join('\n');
+                window.renderExtraImageManager();
+
+                showToast(`✅ ${files.length}개 이미지 업로드 완료`);
+            } else {
+                const url = await uploadFileToStorage(files[0]);
+                document.getElementById(targetId).value = url;
+                showToast("✅ 대표 이미지 업로드 완료");
+            }
+        } catch (err) {
+            console.error("Image upload failed.", err);
+            showToast("❌ 이미지 업로드 실패");
+        } finally {
+            if (spinner) spinner.classList.add('hidden');
+            input.value = "";
+        }
+    };
+
     async function loadReviewsForProduct(prodId) {
         const reviewsList = document.getElementById('reviews-list-container');
         const reviewsCountEl = document.getElementById('detail-reviews-count');
@@ -1838,18 +3276,118 @@
         }
     };
 
+    window.downloadExcelCSV = function() {
+        if (globalOrders.length === 0) {
+            showToast("❌ 다운로드할 데이터가 없습니다.");
+            return;
+        }
+
+        const headers = [
+            "날짜", "주문상태", "이름", "연락처", "주소", "주문품목", "메모", "닉네임", "차량정보", "총액",
+            "주문번호", "입금자성함", "수령인", "수령인번호", "우편번호", "도서산간여부", "송장번호", "택배사"
+        ];
+
+        const rows = globalOrders.map(order => {
+            const cartSummaryText = (order.cart || []).map(itm => `${itm.optionName}(${itm.quantity}개)`).join(' | ');
+            const fullAddress = `[${order.postalCode}] ${order.addressBasic} ${order.addressDetail}`;
+
+            return [
+                order.createdAt,
+                order.status,
+                order.ordererName,
+                order.ordererPhone,
+                fullAddress,
+                cartSummaryText,
+                order.shippingMemo,
+                order.ordererNickname,
+                order.ordererCarInfo || "미기입",
+                order.finalTotal,
+                order.orderId,
+                order.depositorName,
+                order.shipName,
+                order.shipPhone,
+                order.postalCode,
+                order.isIslandShipping ? "제주/도서산간" : "일반",
+                order.trackingNumber || "",
+                order.courier || "한진택배"
+            ].map(val => `"${String(val ?? '').replace(/"/g, '""')}"`);
+        });
+
+        const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+        const bom = "\ufeff";
+        const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+
+        link.setAttribute("href", url);
+        link.setAttribute("download", `테슬랩_회원구매_주문리스트_${new Date().toISOString().slice(0, 10)}.csv`);
+        link.style.visibility = 'hidden';
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast("📊 CSV 파일 다운로드가 완료되었습니다.");
+    };
+
+    window.switchAdminSubTab = function(subtab) {
+        if (!isAdminAuthenticated) return;
+
+        const ordersBtn = document.getElementById('subtab-orders');
+        const statsBtn = document.getElementById('subtab-stats');
+        const productsBtn = document.getElementById('subtab-products');
+
+        const ordersSec = document.getElementById('admin-section-orders');
+        const statsSec = document.getElementById('admin-section-stats');
+        const productsSec = document.getElementById('admin-section-products');
+
+        [ordersBtn, statsBtn, productsBtn].forEach(btn => {
+            btn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition";
+        });
+
+        [ordersSec, statsSec, productsSec].forEach(sec => {
+            sec.classList.add('hidden');
+        });
+
+        if (subtab === 'orders') {
+            ordersBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
+            ordersSec.classList.remove('hidden');
+            loadAdminOrders();
+        } else if (subtab === 'stats') {
+            statsBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
+            statsSec.classList.remove('hidden');
+            renderAdminStatistics();
+        } else if (subtab === 'products') {
+            productsBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
+            productsSec.classList.remove('hidden');
+            renderAdminProducts();
+        }
+    };
+
     window.switchTab = function(activeTabId, activeViewId) {
-        ['order-tab', 'track-tab'].forEach(tabId => {
+        ['order-tab', 'track-tab', 'admin-tab'].forEach(tabId => {
             document.getElementById(tabId).classList.remove('tab-active');
         });
 
-        ['view-order-form', 'view-track-order'].forEach(viewId => {
+        ['view-order-form', 'view-track-order', 'view-admin-dashboard'].forEach(viewId => {
             document.getElementById(viewId).classList.add('hidden');
         });
 
         document.getElementById(activeTabId).classList.add('tab-active');
         document.getElementById(activeViewId).classList.remove('hidden');
+
+        if (activeViewId === 'view-admin-dashboard') {
+            if (!isAdminAuthenticated) {
+                document.getElementById('admin-auth-panel').classList.remove('hidden');
+                document.getElementById('admin-content-panel').classList.add('hidden');
+            } else {
+                loadAdminOrders();
+                renderAdminProducts();
+            }
+        }
     };
+
     window.formatPhoneNumber = function(input) {
         let num = input.value.replace(/[^0-9]/g, '');
 
@@ -1890,19 +3428,15 @@
     window.openLightbox = function(src, caption) {
         if (!src) return;
 
-        const lightboxImage = document.getElementById('lightbox-img');
-        lightboxImage.loading = 'eager';
-        lightboxImage.fetchPriority = 'high';
-        lightboxImage.decoding = 'async';
-        lightboxImage.src = src;
+        document.getElementById('lightbox-img').src = src;
         document.getElementById('lightbox-caption').textContent = caption || '';
         document.getElementById('lightbox').classList.remove('hidden');
     };
 
     window.closeLightbox = function() {
         document.getElementById('lightbox').classList.add('hidden');
-        document.getElementById('lightbox-img').removeAttribute('src');
     };
+
     window.copyBankAccount = function() {
         const temp = document.createElement('textarea');
         temp.value = "카카오뱅크 3333-31-7244898 배준호";
