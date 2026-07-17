@@ -821,6 +821,7 @@
     let isIslandShipping = false;
     const shippingDefault = 4000;
     const DEFAULT_IMAGE_URL = "./assets/product-placeholder.svg";
+    let productImageObserver = null;
     let postcodeScriptPromise = null;
 
     function escapeHtml(value) {
@@ -838,6 +839,33 @@
     function getProductThumbnailUrl(product) {
         const thumbnailUrl = String(product?.thumbnailUrl || '').trim();
         return thumbnailUrl || String(product?.img || DEFAULT_IMAGE_URL);
+    }
+
+    function hydrateProductCardImages(container) {
+        productImageObserver?.disconnect();
+        const images = Array.from(container.querySelectorAll('img[data-src]'));
+
+        const loadImage = image => {
+            const source = image.dataset.src;
+            if (!source) return;
+            image.src = source;
+            image.removeAttribute('data-src');
+        };
+
+        if (!('IntersectionObserver' in window)) {
+            images.forEach(loadImage);
+            return;
+        }
+
+        productImageObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                loadImage(entry.target);
+                productImageObserver.unobserve(entry.target);
+            });
+        }, { rootMargin: '50px 0px', threshold: 0.01 });
+
+        images.forEach(image => productImageObserver.observe(image));
     }
 
     function loadDaumPostcodeScript() {
@@ -1006,10 +1034,9 @@
             return;
         }
 
-        listContainer.innerHTML = products.map((prod, index) => {
+        listContainer.innerHTML = products.map(prod => {
             const soldOut = isProductSoldOut(prod);
             const thumbnailUrl = getProductThumbnailUrl(prod);
-            const isInitialThumbnail = index < 3;
             const safeName = escapeHtml(prod.name || '상품');
             const safeDescription = escapeHtml(prod.desc || '');
             const safeItemNo = escapeHtml(prod.itemNo || '');
@@ -1017,7 +1044,7 @@
             return `
             <div class="bg-white border border-slate-100 rounded-xl sm:rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group ${soldOut ? 'opacity-80' : ''}" onclick="openProductDetailModal('${prod.id}')">
                 <div class="relative aspect-[4/3] bg-slate-50 border-b border-slate-50 overflow-hidden shrink-0">
-                    <img src="${escapeHtml(thumbnailUrl)}" alt="${safeName}" class="w-full h-full object-cover img-zoom" loading="${isInitialThumbnail ? 'eager' : 'lazy'}" ${isInitialThumbnail ? 'fetchpriority="high"' : ''} decoding="async" width="400" height="300" onerror="this.onerror=null;this.src='${DEFAULT_IMAGE_URL}'">
+                    <img src="${DEFAULT_IMAGE_URL}" data-src="${escapeHtml(thumbnailUrl)}" alt="${safeName}" class="w-full h-full object-cover img-zoom" loading="lazy" decoding="async" width="400" height="300" onerror="this.onerror=null;this.removeAttribute('data-src');this.src='${DEFAULT_IMAGE_URL}'">
                     <span class="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 bg-slate-900/80 backdrop-blur-sm text-white font-mono text-[8px] sm:text-[9px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md uppercase tracking-wider">${safeItemNo}</span>
                     ${soldOut ? `<span class="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 bg-rose-600 text-white font-black text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md shadow">품절</span>` : ''}
                     <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center">
@@ -1037,6 +1064,7 @@
             </div>
         `;
         }).join('');
+        hydrateProductCardImages(listContainer);
     }
     window.openProductDetailModal = function(prodId) {
         const prod = products.find(p => p.id === prodId);

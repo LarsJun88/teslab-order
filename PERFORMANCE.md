@@ -7,7 +7,7 @@
 - The public page reads only the catalog and notice documents during startup. Order lookup and review verification remain on-demand actions.
 - Google web-font downloads were removed from the public page in favor of Korean system fonts.
 - Daum postcode is loaded only after the user selects `우편번호 찾기`.
-- Product cards read `thumbnailUrl` first. The first three card images are high priority; later cards use native lazy loading and async decoding.
+- Product cards read `thumbnailUrl` first. Card image URLs are assigned only when a card comes within 50px of the viewport, then native lazy loading and async decoding apply.
 - Detail images are created only when a product detail modal opens. The first detail image is eager; the rest are lazy. Closing the modal removes detail image sources from the DOM.
 - Broken product images use the small local `assets/product-placeholder.svg` fallback without repeating the failed remote request.
 
@@ -17,15 +17,17 @@ Existing products keep using `img` until a `thumbnailUrl` exists. That fallback 
 
 1. Open `/admin/` and authenticate.
 2. Open `상품/공지`.
-3. Select `썸네일 생성` to create 480px WebP thumbnails for every product without one, or use the per-product `썸네일` button.
+3. Select `전체 썸네일 생성` to create 480px WebP thumbnails for every product without one, or use the per-product `썸네일` button.
 4. If an external image blocks browser conversion because of CORS, open `수정` and upload a prepared 400-480px WebP file in `목록 썸네일`.
 5. Confirm the product row shows `썸네일 적용`.
 
-The original `img` and `extraImgs` remain untouched. `thumbnailUrl` is only for product cards.
+The original `img` and `extraImgs` remain untouched during this migration. `thumbnailUrl` is only for product cards.
+
+New representative uploads are automatically converted to a maximum 1600px detail image and a 480px list thumbnail. New detail-image uploads are capped at 1600px. Generated files prefer WebP, fall back to JPEG where WebP encoding is unavailable, and receive a one-year immutable browser cache header.
 
 ## Expected first-visit image transfer
 
-After all products have 50-120KB WebP thumbnails, the public page initially requests only the first three thumbnails: about 150-360KB of product imagery. Later card images load while scrolling. Detail images load only after selecting the corresponding product.
+After all products have 50-120KB WebP thumbnails, the public page initially requests only the visible first row: normally two images on mobile or three on desktop, about 100-360KB of product imagery. Later card images load while scrolling. Before migration, the same viewport gating prevents all original images from downloading at once, but the visible originals can still be large. Detail images load only after selecting the corresponding product.
 
 Total transfer also includes Tailwind, Font Awesome, Firebase modules, and browser cache state. Measure the deployed site after thumbnail migration; the 3MB target cannot be confirmed from source code alone.
 

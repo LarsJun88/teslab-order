@@ -516,7 +516,7 @@
                         </div>
                         <div class="flex gap-2">
                             <button type="button" onclick="generateMissingThumbnails()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i> 썸네일 생성
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> 전체 썸네일 생성
                             </button>
                             <button type="button" onclick="openAddProductModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
                                 <i class="fa-solid fa-plus"></i> 신규 품목 추가
@@ -956,6 +956,8 @@
     };
 
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'tkc-co-order-2026';
+    const DEFAULT_IMAGE_URL = '../assets/product-placeholder.svg';
+    let productImageObserver = null;
 
     // Temporary client-side password gate. Replace with Firebase administrator authentication.
     const ADMIN_PASSWORD_HASH = "6080fc41ca9310da4a4cbc54052c79d89f8bea0cdaf2b3f121a7f9ff5e8584ef";
@@ -1154,6 +1156,7 @@
 
     window.addEventListener('DOMContentLoaded', () => {
         renderNoticeUI(localNotice);
+        renderProductsUI();
         calculateCartTotals();
         switchTab('admin-tab', 'view-admin-dashboard');
         runAuth();
@@ -1216,6 +1219,38 @@
 
     function isProductSoldOut(product) {
         return isSoldOutText(product?.name) || isSoldOutText(product?.itemNo);
+    }
+
+    function getProductThumbnailUrl(product) {
+        const thumbnailUrl = String(product?.thumbnailUrl || '').trim();
+        return thumbnailUrl || String(product?.img || DEFAULT_IMAGE_URL);
+    }
+
+    function hydrateProductCardImages(container) {
+        productImageObserver?.disconnect();
+        const images = Array.from(container.querySelectorAll('img[data-src]'));
+
+        const loadImage = image => {
+            const source = image.dataset.src;
+            if (!source) return;
+            image.src = source;
+            image.removeAttribute('data-src');
+        };
+
+        if (!('IntersectionObserver' in window)) {
+            images.forEach(loadImage);
+            return;
+        }
+
+        productImageObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                loadImage(entry.target);
+                productImageObserver.unobserve(entry.target);
+            });
+        }, { rootMargin: '50px 0px', threshold: 0.01 });
+
+        images.forEach(image => productImageObserver.observe(image));
     }
 
     function normalizeOptionLabel(value) {
@@ -1291,6 +1326,7 @@
             }
 
             renderAdminProducts();
+            renderProductsUI();
         } catch (err) {
             console.error("Firestore config load failure. Using cache.", err);
         }
@@ -1314,12 +1350,16 @@
 
         listContainer.innerHTML = products.map(prod => {
             const soldOut = isProductSoldOut(prod);
+            const thumbnailUrl = getProductThumbnailUrl(prod);
+            const safeName = escapeHtml(prod.name || '상품');
+            const safeDescription = escapeHtml(prod.desc || '');
+            const safeItemNo = escapeHtml(prod.itemNo || '');
 
             return `
             <div class="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group ${soldOut ? 'opacity-80' : ''}" onclick="openProductDetailModal('${prod.id}')">
                 <div class="relative aspect-[4/3] bg-slate-50 border-b border-slate-50 overflow-hidden shrink-0">
-                    <img src="${prod.img || ''}" alt="${prod.name}" class="w-full h-full object-cover img-zoom" onerror="this.src='https://images.unsplash.com/photo-1597423498219-04418210827d?q=80&w=600&auto=format&fit=crop'">
-                    <span class="absolute top-2.5 left-2.5 bg-slate-900/80 backdrop-blur-sm text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${prod.itemNo || ''}</span>
+                    <img src="${DEFAULT_IMAGE_URL}" data-src="${escapeHtml(thumbnailUrl)}" alt="${safeName}" class="w-full h-full object-cover img-zoom" loading="lazy" decoding="async" width="400" height="300" onerror="this.onerror=null;this.removeAttribute('data-src');this.src='${DEFAULT_IMAGE_URL}'">
+                    <span class="absolute top-2.5 left-2.5 bg-slate-900/80 backdrop-blur-sm text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${safeItemNo}</span>
                     ${soldOut ? `<span class="absolute top-2.5 right-2.5 bg-rose-600 text-white font-black text-[10px] px-2 py-1 rounded-md shadow">품절</span>` : ''}
                     <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center">
                         <span class="bg-white text-slate-950 text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5">
@@ -1328,8 +1368,8 @@
                     </div>
                 </div>
                 <div class="p-4 space-y-1.5">
-                    <h3 class="font-bold text-slate-800 text-sm sm:text-base group-hover:text-indigo-600 transition leading-tight">${prod.name}</h3>
-                    <p class="text-xs text-slate-400 truncate">${prod.desc || ''}</p>
+                    <h3 class="font-bold text-slate-800 text-sm sm:text-base group-hover:text-indigo-600 transition leading-tight">${safeName}</h3>
+                    <p class="text-xs text-slate-400 truncate">${safeDescription}</p>
                     <div class="flex items-center justify-between pt-1">
                         <span class="text-sm font-black text-slate-950">${Number(prod.price || 0).toLocaleString()}원</span>
                         <span class="text-[10px] ${soldOut ? 'text-rose-600 bg-rose-50' : 'text-indigo-600 bg-indigo-50/70'} font-bold px-2 py-1 rounded">${soldOut ? '품절' : '옵션지원'}</span>
@@ -1338,6 +1378,8 @@
             </div>
         `;
         }).join('');
+
+        hydrateProductCardImages(listContainer);
     }
 
     window.openProductDetailModal = function(prodId) {
@@ -1942,6 +1984,13 @@
                 await loadAdminOrders();
                 renderAdminProducts();
                 startOrderNotificationListenerIfReady();
+
+                const missingThumbnailCount = products.filter(product => product.img && !product.thumbnailUrl).length;
+                if (missingThumbnailCount > 0) {
+                    setTimeout(() => {
+                        showToast(`${missingThumbnailCount}개 상품이 원본을 사용 중입니다. 상품/공지에서 전체 썸네일 생성을 실행해 주세요.`);
+                    }, 500);
+                }
             } else {
                 showToast("❌ 비밀번호가 일치하지 않습니다.");
             }
@@ -2911,35 +2960,103 @@
 
         const storageRef = ref(storage, `artifacts/${appId}/public/data/images/${Date.now()}_${safeFileName}`);
 
-        await uploadBytes(storageRef, file);
+        await uploadBytes(storageRef, file, {
+            contentType: file.type || 'application/octet-stream',
+            cacheControl: 'public,max-age=31536000,immutable'
+        });
 
         return await getDownloadURL(storageRef);
     }
 
-    async function createThumbnailFile(imageUrl, productName) {
-        const response = await fetch(imageUrl);
-        if (!response.ok) throw new Error(`Image download failed: ${response.status}`);
+    async function decodeImageBlob(blob) {
+        if (typeof createImageBitmap === 'function') {
+            const bitmap = await createImageBitmap(blob);
+            return {
+                source: bitmap,
+                width: bitmap.width,
+                height: bitmap.height,
+                close: () => bitmap.close?.()
+            };
+        }
 
-        const sourceBlob = await response.blob();
-        const sourceImage = await createImageBitmap(sourceBlob);
-        const maxWidth = 480;
-        const maxHeight = 360;
-        const scale = Math.min(1, maxWidth / sourceImage.width, maxHeight / sourceImage.height);
-        const width = Math.max(1, Math.round(sourceImage.width * scale));
-        const height = Math.max(1, Math.round(sourceImage.height * scale));
+        const objectUrl = URL.createObjectURL(blob);
+        const image = new Image();
+
+        try {
+            await new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = () => reject(new Error('Image decode failed.'));
+                image.src = objectUrl;
+            });
+
+            return {
+                source: image,
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+                close: () => URL.revokeObjectURL(objectUrl)
+            };
+        } catch (error) {
+            URL.revokeObjectURL(objectUrl);
+            throw error;
+        }
+    }
+
+    async function createOptimizedImageFile(sourceBlob, baseName, options = {}) {
+        const {
+            maxWidth = 1600,
+            maxHeight = 1600,
+            quality = 0.8,
+            suffix = 'optimized'
+        } = options;
+        const decoded = await decodeImageBlob(sourceBlob);
+        const scale = Math.min(1, maxWidth / decoded.width, maxHeight / decoded.height);
+        const width = Math.max(1, Math.round(decoded.width * scale));
+        const height = Math.max(1, Math.round(decoded.height * scale));
         const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext('2d', { alpha: true });
+
+        if (!context) {
+            decoded.close();
+            throw new Error('Canvas is unavailable.');
+        }
 
         canvas.width = width;
         canvas.height = height;
-        context.drawImage(sourceImage, 0, 0, width, height);
-        sourceImage.close?.();
 
-        const thumbnailBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.78));
-        if (!thumbnailBlob) throw new Error('Thumbnail encoding failed.');
+        try {
+            context.drawImage(decoded.source, 0, 0, width, height);
+        } finally {
+            decoded.close();
+        }
 
-        const safeName = String(productName || 'product').replace(/[^\w-]+/g, '_');
-        return new File([thumbnailBlob], `${safeName}_thumbnail.webp`, { type: 'image/webp' });
+        let outputBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', quality));
+        let extension = 'webp';
+
+        if (!outputBlob || outputBlob.type !== 'image/webp') {
+            outputBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', Math.min(0.86, quality + 0.06)));
+            extension = 'jpg';
+        }
+
+        if (!outputBlob) throw new Error('Image encoding failed.');
+
+        const safeName = String(baseName || 'product')
+            .replace(/\.[^.]+$/, '')
+            .replace(/[^\w가-힣-]+/g, '_')
+            .replace(/^_+|_+$/g, '') || 'product';
+
+        return new File([outputBlob], `${safeName}_${suffix}.${extension}`, { type: outputBlob.type });
+    }
+
+    async function createThumbnailFile(imageUrl, productName) {
+        const response = await fetch(imageUrl, { cache: 'force-cache' });
+        if (!response.ok) throw new Error(`Image download failed: ${response.status}`);
+
+        return createOptimizedImageFile(await response.blob(), productName, {
+            maxWidth: 480,
+            maxHeight: 360,
+            quality: 0.72,
+            suffix: 'thumbnail'
+        });
     }
 
     async function persistCatalogProducts(updatedProducts) {
@@ -3040,8 +3157,13 @@
                 const urls = [];
 
                 for (let i = 0; i < files.length; i++) {
-                    const url = await uploadFileToStorage(files[i]);
-                    urls.push(url);
+                    const optimizedFile = await createOptimizedImageFile(files[i], files[i].name, {
+                        maxWidth: 1600,
+                        maxHeight: 1600,
+                        quality: 0.8,
+                        suffix: `detail_${i + 1}`,
+                    });
+                    urls.push(await uploadFileToStorage(optimizedFile));
                 }
 
                 const textarea = document.getElementById(targetId);
@@ -3049,19 +3171,50 @@
 
                 textarea.value = existing ? existing + '\n' + urls.join('\n') : urls.join('\n');
                 window.renderExtraImageManager();
+                showToast(`${files.length}개 상세 이미지를 WebP로 최적화했습니다.`);
+            } else if (targetId === 'edit-prod-img') {
+                const productName = document.getElementById('edit-prod-name').value.trim() || files[0].name;
+                const [detailFile, thumbnailFile] = await Promise.all([
+                    createOptimizedImageFile(files[0], productName, {
+                        maxWidth: 1600,
+                        maxHeight: 1600,
+                        quality: 0.8,
+                        suffix: 'detail',
+                    }),
+                    createOptimizedImageFile(files[0], productName, {
+                        maxWidth: 480,
+                        maxHeight: 360,
+                        quality: 0.72,
+                        suffix: 'thumbnail',
+                    }),
+                ]);
+                const [detailUrl, thumbnailUrl] = await Promise.all([
+                    uploadFileToStorage(detailFile),
+                    uploadFileToStorage(thumbnailFile),
+                ]);
 
-                showToast(`✅ ${files.length}개 이미지 업로드 완료`);
+                document.getElementById('edit-prod-img').value = detailUrl;
+                document.getElementById('edit-prod-thumbnail').value = thumbnailUrl;
+                showToast('대표 이미지와 480px 목록 썸네일을 함께 저장했습니다.');
+            } else if (targetId === 'edit-prod-thumbnail') {
+                const thumbnailFile = await createOptimizedImageFile(files[0], files[0].name, {
+                    maxWidth: 480,
+                    maxHeight: 360,
+                    quality: 0.72,
+                    suffix: 'thumbnail',
+                });
+                document.getElementById(targetId).value = await uploadFileToStorage(thumbnailFile);
+                showToast('480px 목록 썸네일을 저장했습니다.');
             } else {
-                const url = await uploadFileToStorage(files[0]);
-                document.getElementById(targetId).value = url;
-                showToast("✅ 대표 이미지 업로드 완료");
+                document.getElementById(targetId).value = await uploadFileToStorage(files[0]);
+                showToast('이미지 업로드가 완료되었습니다.');
             }
         } catch (err) {
-            console.error("Image upload failed.", err);
-            showToast("❌ 이미지 업로드 실패");
+            console.error('Image optimization or upload failed.', err);
+            showToast('이미지 최적화 또는 업로드에 실패했습니다.');
         } finally {
             if (spinner) spinner.classList.add('hidden');
-            input.value = "";
+            input.value = '';
         }
     };
 
@@ -3377,6 +3530,10 @@
 
         document.getElementById(activeTabId).classList.add('tab-active');
         document.getElementById(activeViewId).classList.remove('hidden');
+
+        if (activeViewId === 'view-order-form') {
+            requestAnimationFrame(() => hydrateProductCardImages(document.getElementById('dynamic-product-list')));
+        }
 
         if (activeViewId === 'view-admin-dashboard') {
             if (!isAdminAuthenticated) {
