@@ -11,19 +11,21 @@
 - Detail images are created only when a product detail modal opens. The first detail image is eager; the rest are lazy. Closing the modal removes detail image sources from the DOM.
 - Broken product images use the small local `assets/product-placeholder.svg` fallback without repeating the failed remote request.
 
-## Thumbnail migration
+## Image migration
 
 Existing products keep using `img` until a `thumbnailUrl` exists. That fallback preserves current product images, but it cannot guarantee the 1-3MB first-visit target when old originals are large.
 
 1. Open `/admin/` and authenticate.
 2. Open `상품/공지`.
-3. Select `전체 썸네일 생성` to create 480px WebP thumbnails for every product without one, or use the per-product `썸네일` button.
-4. If an external image blocks browser conversion because of CORS, open `수정` and upload a prepared 400-480px WebP file in `목록 썸네일`.
-5. Confirm the product row shows `썸네일 적용`.
+3. Select `전체 이미지 최적화` once to create a maximum 1080px WebP representative image, maximum 1080px WebP detail images, and a 480px WebP thumbnail for every existing product.
+4. The catalog switches to the optimized URLs after each product succeeds. Existing files remain in Firebase Storage and registered image order is preserved.
+5. `전체 썸네일 생성` remains available when only card thumbnails are needed, or use the per-product `썸네일` button.
+6. If an external image blocks browser conversion because of CORS, open `수정` and upload the image file directly.
+7. Confirm the product row shows `썸네일 적용`.
 
-The original `img` and `extraImgs` remain untouched during this migration. `thumbnailUrl` is only for product cards.
+The original Storage files are not deleted during migration. The catalog's `img` and `extraImgs` URLs are replaced with optimized copies, and `thumbnailUrl` is used for product cards.
 
-New representative uploads are automatically converted to a maximum 1600px detail image and a 480px list thumbnail. New detail-image uploads are capped at 1600px. Generated files prefer WebP, fall back to JPEG where WebP encoding is unavailable, and receive a one-year immutable browser cache header.
+New representative uploads are automatically converted to a maximum 1080px detail image and a 480px list thumbnail. New detail-image uploads are capped at 1080px. The detail modal and lightbox use the same 1080px optimized URLs instead of loading separate originals. Generated files prefer WebP, fall back to JPEG where WebP encoding is unavailable, and receive a one-year immutable browser cache header.
 
 ## Expected first-visit image transfer
 
