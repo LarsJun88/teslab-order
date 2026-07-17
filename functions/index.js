@@ -42,6 +42,18 @@ function formatCartItems(cart) {
   }).join("\n");
 }
 
+function normalizePhoneDigits(value) {
+  return String(value ?? "").replace(/[^0-9]/g, "");
+}
+
+function normalizeLookupName(value) {
+  return String(value ?? "").trim().replace(/\s+/g, "");
+}
+
+function buildOrderLookupKey(name, phone) {
+  return normalizeLookupName(name) + "_" + normalizePhoneDigits(phone);
+}
+
 function buildTelegramMessage(order) {
   const ordererName = order.ordererName || "주문자";
   const finalTotal = formatWon(order.finalTotal);
@@ -173,6 +185,9 @@ exports.submitOrderWithInventory = onCall(
           quantity: Number(item.quantity),
           unitPrice: Number(item.unitPrice)
         })),
+        ordererNameNormalized: normalizeLookupName(order.ordererName),
+        ordererPhoneDigits: normalizePhoneDigits(order.ordererPhone),
+        orderLookupKey: buildOrderLookupKey(order.ordererName, order.ordererPhone),
         inventoryCommittedAt: FieldValue.serverTimestamp(),
         inventoryCommittedBy: request.auth.uid
       };

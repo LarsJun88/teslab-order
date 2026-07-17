@@ -402,7 +402,6 @@
                 <div class="flex border-b border-slate-200 text-xs font-bold gap-4 mb-4 overflow-x-auto whitespace-nowrap">
                     <button type="button" onclick="switchDetailTab('desc')" id="detail-tab-desc" class="pb-2 border-b-2 border-indigo-600 text-indigo-600">상세 스펙</button>
                     <button type="button" onclick="switchDetailTab('policy')" id="detail-tab-policy" class="pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-700">배송 및 환불규정</button>
-                    <button type="button" onclick="switchDetailTab('reviews')" id="detail-tab-reviews" class="pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-700">구매 후기 (<span id="detail-reviews-count">0</span>)</button>
                 </div>
 
                 <div id="detail-tab-content-desc" class="text-xs text-slate-600 space-y-4 leading-relaxed">
@@ -430,22 +429,7 @@
                     <p><i class="fa-solid fa-arrows-rotate text-amber-500 mr-1.5"></i>맞춤 제작 특성상 발주 완료 이후 단순 변심 환불은 어렵습니다. 제품 하자 시 7일 이내 교환을 진행합니다.</p>
                 </div>
 
-                <div id="detail-tab-content-reviews" class="space-y-4 hidden">
-                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-                        <div>
-                            <span class="text-xs text-slate-500 font-bold block">만족도 평점 평균</span>
-                            <div class="flex items-center gap-1.5 mt-0.5">
-                                <span class="text-slate-900 font-extrabold text-base" id="reviews-avg-rating">0.0</span>
-                                <div class="flex text-amber-400 text-xs" id="reviews-avg-stars"></div>
                             </div>
-                        </div>
-                        <button type="button" onclick="openReviewAuthModal()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-3.5 py-2.5 rounded-xl transition flex items-center gap-1.5">
-                            <i class="fa-solid fa-pen-to-square"></i> 후기 작성
-                        </button>
-                    </div>
-                    <div id="reviews-list-container" class="space-y-3 divide-y divide-slate-100 max-h-64 overflow-y-auto pr-1"></div>
-                </div>
-            </div>
         </div>
 
         <div class="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 shrink-0">
@@ -454,70 +438,6 @@
             </button>
             <button type="button" id="detail-add-cart-btn" onclick="addActiveProductToCart()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl text-xs transition flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-cart-shopping"></i> 장바구니 담기
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Review Auth Gate modal -->
-<div id="review-auth-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
-        <div class="flex justify-between items-center">
-            <h4 class="font-extrabold text-slate-900 text-sm">구매 이력 인증</h4>
-            <button type="button" onclick="closeModal('review-auth-modal')" class="text-slate-400 hover:text-slate-600">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        <p class="text-[11px] text-slate-500 leading-normal">주문 당시 작성한 이름과 연락처로 구매 이력을 인증합니다.</p>
-        <div class="space-y-3 text-xs">
-            <div>
-                <label class="block font-bold text-slate-500 mb-1">주문자 성함</label>
-                <input type="text" id="review-auth-name" placeholder="홍길동" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-indigo-500">
-            </div>
-            <div>
-                <label class="block font-bold text-slate-500 mb-1">주문자 연락처</label>
-                <input type="tel" id="review-auth-phone" oninput="formatPhoneNumber(this)" placeholder="010-1234-5678" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-indigo-500">
-            </div>
-            <button type="button" onclick="verifyBuyerForReview()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-1.5">
-                <i class="fa-solid fa-shield"></i> 이력 조회 및 인증
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Write Review Modal -->
-<div id="review-write-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-        <div class="flex justify-between items-center">
-            <h4 class="font-extrabold text-slate-900 text-sm">사용 후기 작성</h4>
-            <button type="button" onclick="closeModal('review-write-modal')" class="text-slate-400 hover:text-slate-600">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-
-        <div class="p-2 bg-indigo-50 rounded-lg text-[10px] text-indigo-700 flex justify-between font-semibold">
-            <span>구매 인증 고객: <strong id="write-buyer-name">-</strong>님</span>
-            <span id="write-buyer-car">-</span>
-        </div>
-
-        <div class="space-y-3 text-xs">
-            <div>
-                <label class="block font-bold text-slate-500 mb-1">별점</label>
-                <div class="flex gap-1.5 text-2xl text-slate-200 cursor-pointer" id="rating-stars-interactive">
-                    <i class="fa-solid fa-star" onclick="setInteractiveRating(1)"></i>
-                    <i class="fa-solid fa-star" onclick="setInteractiveRating(2)"></i>
-                    <i class="fa-solid fa-star" onclick="setInteractiveRating(3)"></i>
-                    <i class="fa-solid fa-star" onclick="setInteractiveRating(4)"></i>
-                    <i class="fa-solid fa-star" onclick="setInteractiveRating(5)"></i>
-                </div>
-                <span class="text-[10px] text-slate-400 block mt-1" id="rating-text-hint">별점을 클릭해 주세요.</span>
-            </div>
-            <div>
-                <label class="block font-bold text-slate-500 mb-1">후기 내용</label>
-                <textarea id="review-text-input" rows="4" placeholder="사용 만족도를 적어주세요." class="w-full rounded-xl border border-slate-200 p-3 outline-none focus:border-indigo-500 leading-normal"></textarea>
-            </div>
-            <button type="button" onclick="submitReview()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-1">
-                <i class="fa-solid fa-share-from-square"></i> 후기 등록
             </button>
         </div>
     </div>
@@ -651,6 +571,8 @@
         setDoc,
         collection,
         getDocs,
+        query,
+        where,
         onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import {
@@ -679,7 +601,6 @@
     let currentUser = null;
 
     let localOrders = [];
-    let localReviews = [];
     let globalOrders = [];
 
     let localNotice = "필독사항: 본 전용 파츠는 맞춤 제작 상품으로, 입금 확인 이후 순차 제작됩니다.";
@@ -839,6 +760,29 @@
     let catalogUnsubscribe = null;
     let isSubmittingOrder = false;
 
+
+    function normalizePhoneDigits(value) {
+        return String(value || '').replace(/[^0-9]/g, '');
+    }
+
+    function normalizeLookupName(value) {
+        return String(value || '').trim().replace(/\s+/g, '');
+    }
+
+    function buildOrderLookupKey(name, phone) {
+        return normalizeLookupName(name) + '_' + normalizePhoneDigits(phone);
+    }
+
+    function dedupeOrdersById(orders) {
+        const seen = new Set();
+        return orders.filter(order => {
+            const key = order.orderId || `${order.timestamp || ''}_${order.ordererPhone || ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, char => ({
             '&': '&amp;',
@@ -857,7 +801,20 @@
     }
 
     function getProductDetailImageUrl(product) {
-        return String(product?.detailImageUrl || product?.img || getProductThumbnailUrl(product));
+        const detailUrl = String(product?.detailImageUrl || '').trim();
+        const thumbnailUrl = String(product?.thumbnailUrl || '').trim();
+        const originalUrl = String(product?.img || '').trim();
+        const detailVersion = Number(product?.detailImageOptimizationVersion || 0);
+
+        if (detailVersion >= 3 && detailUrl) return detailUrl;
+        return thumbnailUrl || detailUrl || originalUrl || DEFAULT_IMAGE_URL;
+    }
+
+    function getProductDetailPreviewUrl(product) {
+        const thumbnailUrl = String(product?.thumbnailUrl || '').trim();
+        const detailUrl = String(product?.detailImageUrl || '').trim();
+        const originalUrl = String(product?.img || '').trim();
+        return thumbnailUrl || detailUrl || originalUrl || DEFAULT_IMAGE_URL;
     }
 
     function getProductDetailExtraImages(product) {
@@ -866,10 +823,43 @@
             .map(url => url.trim())
             .filter(Boolean);
         const optimizedUrls = Array.isArray(product?.detailExtraImgs) ? product.detailExtraImgs : [];
+        const readyOptimizedUrls = optimizedUrls.map(url => String(url || '').trim()).filter(Boolean);
 
-        return originalUrls
-            .map((url, index) => String(optimizedUrls[index] || url).trim())
-            .filter(Boolean);
+        if (readyOptimizedUrls.length > 0) {
+            return originalUrls.map((url, index) => String(optimizedUrls[index] || '').trim()).filter(Boolean);
+        }
+
+        return originalUrls;
+    }
+
+    let detailImageObserver = null;
+
+    function hydrateDetailExtraImages(container) {
+        detailImageObserver?.disconnect();
+        const images = Array.from(container.querySelectorAll('img[data-src]'));
+
+        const loadImage = image => {
+            const source = image.dataset.src;
+            if (!source) return;
+            image.src = source;
+            image.removeAttribute('data-src');
+        };
+
+        if (!('IntersectionObserver' in window)) {
+            images.forEach(loadImage);
+            return;
+        }
+
+        const scrollRoot = document.querySelector('#detail-page-modal .overflow-y-auto');
+        detailImageObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                loadImage(entry.target);
+                detailImageObserver.unobserve(entry.target);
+            });
+        }, { root: scrollRoot, rootMargin: '160px 0px' });
+
+        images.forEach(image => detailImageObserver.observe(image));
     }
 
     function hydrateProductCardImages(container) {
@@ -917,8 +907,6 @@
 
     let activeProduct = null;
     let activeDetailQty = 1;
-    let selectedInteractiveRating = 5;
-    let verifiedReviewerProfile = null;
 
     try {
         app = initializeApp(firebaseConfig);
@@ -1263,7 +1251,7 @@
 
                     return `
                         <div class="rounded-xl overflow-hidden border border-slate-100 bg-slate-50 relative group cursor-zoom-in aspect-[4/3]" onclick="openLightbox('${safeUrl}', '${caption}')">
-                            <img src="${escapeHtml(url)}" class="w-full h-full object-cover img-zoom" loading="${index === 0 ? 'eager' : 'lazy'}" ${index === 0 ? 'fetchpriority="high"' : ''} decoding="async" width="800" height="600" onerror="this.closest('div').remove()">
+                            <img src="${DEFAULT_IMAGE_URL}" data-src="${escapeHtml(url)}" class="w-full h-full object-cover img-zoom" loading="lazy" decoding="async" width="720" height="540" onerror="this.closest('div').remove()">
                             <div class="absolute bottom-0 left-0 right-0 bg-slate-900/60 text-white text-[10px] px-2 py-1 opacity-0 group-hover:opacity-100 transition">
                                 클릭해서 확대 보기
                             </div>
@@ -1282,9 +1270,9 @@
         switchDetailTab('desc');
         calculateDetailMockPrice();
         updateDetailAddButtonState();
-        loadReviewsForProduct(prod.id);
 
         document.getElementById('detail-page-modal').classList.remove('hidden');
+        if (extraImgsContainer) setTimeout(() => hydrateDetailExtraImages(extraImgsContainer), 0);
     };
 
     window.closeProductDetailModal = function() {
@@ -1295,34 +1283,30 @@
         detailImage.removeAttribute('src');
         detailImage.onclick = null;
         if (extraImages) extraImages.innerHTML = '';
+        detailImageObserver?.disconnect();
         activeProduct = null;
     };
     window.switchDetailTab = function(tabName) {
         const descBtn = document.getElementById('detail-tab-desc');
         const policyBtn = document.getElementById('detail-tab-policy');
-        const reviewsBtn = document.getElementById('detail-tab-reviews');
 
         const descContent = document.getElementById('detail-tab-content-desc');
         const policyContent = document.getElementById('detail-tab-content-policy');
-        const reviewsContent = document.getElementById('detail-tab-content-reviews');
 
-        [descBtn, policyBtn, reviewsBtn].forEach(btn => {
+        [descBtn, policyBtn].forEach(btn => {
             btn.className = "pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-700";
         });
 
-        [descContent, policyContent, reviewsContent].forEach(content => {
+        [descContent, policyContent].forEach(content => {
             content.classList.add('hidden');
         });
 
-        if (tabName === 'desc') {
-            descBtn.className = "pb-2 border-b-2 border-indigo-600 text-indigo-600 font-bold";
-            descContent.classList.remove('hidden');
-        } else if (tabName === 'policy') {
+        if (tabName === 'policy') {
             policyBtn.className = "pb-2 border-b-2 border-indigo-600 text-indigo-600 font-bold";
             policyContent.classList.remove('hidden');
-        } else if (tabName === 'reviews') {
-            reviewsBtn.className = "pb-2 border-b-2 border-indigo-600 text-indigo-600 font-bold";
-            reviewsContent.classList.remove('hidden');
+        } else {
+            descBtn.className = "pb-2 border-b-2 border-indigo-600 text-indigo-600 font-bold";
+            descContent.classList.remove('hidden');
         }
     };
 
@@ -1634,6 +1618,9 @@
             createdAt: date.toLocaleString('ko-KR'),
             ordererName: document.getElementById('orderer_name').value.trim(),
             ordererPhone: document.getElementById('orderer_phone').value.trim(),
+            ordererNameNormalized: normalizeLookupName(document.getElementById('orderer_name').value),
+            ordererPhoneDigits: normalizePhoneDigits(document.getElementById('orderer_phone').value),
+            orderLookupKey: buildOrderLookupKey(document.getElementById('orderer_name').value, document.getElementById('orderer_phone').value),
             ordererNickname: document.getElementById('orderer_nickname').value.trim(),
             ordererCarInfo: document.getElementById('orderer_car_info').value.trim(),
             shipName: document.getElementById('ship_name').value.trim(),
@@ -1740,9 +1727,11 @@
     window.lookupOrder = async function() {
         const trackName = document.getElementById('track_name').value.trim();
         const trackPhone = document.getElementById('track_phone').value.trim();
+        const targetName = normalizeLookupName(trackName);
+        const targetPhone = normalizePhoneDigits(trackPhone);
 
-        if (!trackName || !trackPhone) {
-            showToast("⚠️ 성함과 연락처를 입력해 주세요.");
+        if (!targetName || !targetPhone) {
+            showToast("\u26a0\ufe0f \uc131\ud568\uacfc \uc5f0\ub77d\ucc98\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
             return;
         }
 
@@ -1750,48 +1739,47 @@
         resultContainer.innerHTML = `
             <div class="text-center py-6 text-slate-400">
                 <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block text-indigo-500"></i>
-                <span>조회 중입니다...</span>
+                <span>&#51312;&#54924; &#51473;&#51077;&#45768;&#45796;...</span>
             </div>
         `;
         resultContainer.classList.remove('hidden');
 
         let foundOrders = [];
+        const isTargetOrder = order =>
+            normalizeLookupName(order?.ordererName) === targetName &&
+            normalizePhoneDigits(order?.ordererPhone) === targetPhone;
+
+        const addMatchingOrders = snapshot => {
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                if (isTargetOrder(data)) foundOrders.push(data);
+            });
+        };
 
         if (isDemoMode) {
-            foundOrders = localOrders.filter(order => {
-                const normalizedPhone = order.ordererPhone.replace(/[^0-9]/g, '');
-                const targetPhone = trackPhone.replace(/[^0-9]/g, '');
-                return order.ordererName.trim() === trackName && normalizedPhone === targetPhone;
-            });
-
+            foundOrders = localOrders.filter(isTargetOrder);
             renderFoundOrders(foundOrders);
             return;
         }
 
         try {
             const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-            const querySnapshot = await getDocs(ordersRef);
+            const lookupKey = buildOrderLookupKey(trackName, trackPhone);
 
-            querySnapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                const normalizedPhone = data.ordererPhone.replace(/[^0-9]/g, '');
-                const targetPhone = trackPhone.replace(/[^0-9]/g, '');
+            addMatchingOrders(await getDocs(query(ordersRef, where('orderLookupKey', '==', lookupKey))));
 
-                if (data.ordererName.trim() === trackName && normalizedPhone === targetPhone) {
-                    foundOrders.push(data);
-                }
-            });
+            if (foundOrders.length === 0) {
+                addMatchingOrders(await getDocs(query(ordersRef, where('ordererPhoneDigits', '==', targetPhone))));
+            }
 
-            renderFoundOrders(foundOrders);
+            if (foundOrders.length === 0) {
+                addMatchingOrders(await getDocs(query(ordersRef, where('ordererPhone', '==', trackPhone))));
+            }
+
+            renderFoundOrders(dedupeOrdersById(foundOrders));
         } catch (err) {
             console.warn("Lookup failed. Local fallback.", err);
-
-            foundOrders = localOrders.filter(order => {
-                const normalizedPhone = order.ordererPhone.replace(/[^0-9]/g, '');
-                const targetPhone = trackPhone.replace(/[^0-9]/g, '');
-                return order.ordererName.trim() === trackName && normalizedPhone === targetPhone;
-            });
-
+            foundOrders = localOrders.filter(isTargetOrder);
             renderFoundOrders(foundOrders);
         }
     };
@@ -1860,218 +1848,6 @@
             `;
         }).join('');
     }
-
-    async function loadReviewsForProduct(prodId) {
-        const reviewsList = document.getElementById('reviews-list-container');
-        const reviewsCountEl = document.getElementById('detail-reviews-count');
-        const reviewsAvgEl = document.getElementById('reviews-avg-rating');
-        const reviewsStarsEl = document.getElementById('reviews-avg-stars');
-
-        reviewsList.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs"><i class="fa-solid fa-spinner animate-spin mr-1"></i>리뷰 불러오는 중...</div>`;
-
-        let reviews = [];
-
-        if (isDemoMode) {
-            reviews = localReviews.filter(r => r.productId === prodId);
-        } else {
-            try {
-                const reviewsRef = collection(db, 'artifacts', appId, 'public', 'data', 'reviews');
-                const snap = await getDocs(reviewsRef);
-
-                snap.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if (data.productId === prodId) reviews.push(data);
-                });
-            } catch (err) {
-                console.warn("Review load failed.", err);
-                reviews = localReviews.filter(r => r.productId === prodId);
-            }
-        }
-
-        reviewsCountEl.textContent = reviews.length;
-
-        if (reviews.length === 0) {
-            reviewsAvgEl.textContent = "0.0";
-            reviewsStarsEl.innerHTML = `<i class="fa-regular fa-star"></i><i class="fa-regular fa-star"></i><i class="fa-regular fa-star"></i><i class="fa-regular fa-star"></i><i class="fa-regular fa-star"></i>`;
-            reviewsList.innerHTML = `<div class="py-10 text-center text-xs text-slate-400">아직 작성된 후기가 없습니다.</div>`;
-            return;
-        }
-
-        const avg = (reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / reviews.length).toFixed(1);
-        reviewsAvgEl.textContent = avg;
-
-        let avgStars = "";
-        for (let i = 1; i <= 5; i++) {
-            avgStars += i <= Math.round(avg) ? `<i class="fa-solid fa-star"></i>` : `<i class="fa-regular fa-star"></i>`;
-        }
-        reviewsStarsEl.innerHTML = avgStars;
-
-        reviews.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-        reviewsList.innerHTML = reviews.map(r => {
-            let userStars = "";
-            for (let i = 1; i <= 5; i++) {
-                userStars += i <= r.rating ? `<i class="fa-solid fa-star text-amber-400"></i>` : `<i class="fa-regular fa-star text-slate-200"></i>`;
-            }
-
-            const maskedName = r.ordererName ? `${r.ordererName.substring(0, 1)}*${r.ordererName.substring(2) || ''}` : "구매자";
-
-            return `
-                <div class="py-3 first:pt-0 space-y-1">
-                    <div class="flex items-center justify-between text-[11px]">
-                        <div class="flex items-center gap-1.5">
-                            <span class="font-extrabold text-slate-700">${maskedName}</span>
-                            <span class="bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded-[4px] text-[9px]">구매인증</span>
-                            <span class="text-slate-400 font-medium">${r.carInfo || '테슬라 오너'}</span>
-                        </div>
-                        <span class="text-slate-400 font-mono">${new Date(r.timestamp).toLocaleDateString()}</span>
-                    </div>
-                    <div class="flex items-center gap-1">${userStars}</div>
-                    <p class="text-xs text-slate-600 leading-relaxed font-medium pt-0.5 whitespace-pre-wrap">${r.text}</p>
-                </div>
-            `;
-        }).join('');
-    }
-
-    window.openReviewAuthModal = function() {
-        if (!activeProduct) return;
-
-        document.getElementById('review-auth-name').value = "";
-        document.getElementById('review-auth-phone').value = "";
-
-        openModal('review-auth-modal');
-    };
-
-    window.verifyBuyerForReview = async function() {
-        const buyerName = document.getElementById('review-auth-name').value.trim();
-        const buyerPhone = document.getElementById('review-auth-phone').value.trim();
-
-        if (!buyerName || !buyerPhone) {
-            showToast("⚠️ 이름과 연락처를 입력해 주세요.");
-            return;
-        }
-
-        try {
-            if (!isDemoMode && globalOrders.length === 0) {
-                const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-                const querySnapshot = await getDocs(ordersRef);
-
-                globalOrders = [];
-                querySnapshot.forEach(docSnap => {
-                    globalOrders.push(docSnap.data());
-                });
-            } else if (isDemoMode) {
-                globalOrders = [...localOrders];
-            }
-        } catch (err) {
-            console.warn("Review verify fallback.", err);
-            globalOrders = [...localOrders];
-        }
-
-        const targetPhone = buyerPhone.replace(/[^0-9]/g, '');
-
-        const matchedOrder = globalOrders.find(order => {
-            const orderPhone = order.ordererPhone.replace(/[^0-9]/g, '');
-            const isUserMatch = order.ordererName === buyerName && orderPhone === targetPhone;
-            const containsProduct = order.cart && order.cart.some(item => item.productId === activeProduct.id || item.optionName.includes(activeProduct.name));
-            const isPaid = order.status !== "입금대기";
-
-            return isUserMatch && containsProduct && isPaid;
-        });
-
-        if (!matchedOrder) {
-            showToast("❌ 구매 이력이 없거나 아직 입금대기 상태입니다.");
-            return;
-        }
-
-        verifiedReviewerProfile = {
-            name: buyerName,
-            phone: buyerPhone,
-            carInfo: matchedOrder.ordererCarInfo || "테슬라 오너"
-        };
-
-        closeModal('review-auth-modal');
-
-        document.getElementById('write-buyer-name').textContent = buyerName;
-        document.getElementById('write-buyer-car').textContent = verifiedReviewerProfile.carInfo;
-        document.getElementById('review-text-input').value = "";
-
-        setInteractiveRating(5);
-
-        setTimeout(() => {
-            openModal('review-write-modal');
-            showToast("🎉 구매 인증이 완료되었습니다.");
-        }, 200);
-    };
-
-    window.setInteractiveRating = function(rating) {
-        selectedInteractiveRating = rating;
-
-        const stars = document.getElementById('rating-stars-interactive').querySelectorAll('i');
-        const hint = document.getElementById('rating-text-hint');
-
-        const ratingTextMap = {
-            1: "별로예요 (1점)",
-            2: "그저 그래요 (2점)",
-            3: "보통이에요 (3점)",
-            4: "마음에 들어요 (4점)",
-            5: "최고예요 (5점)"
-        };
-
-        hint.textContent = ratingTextMap[rating];
-
-        stars.forEach((star, index) => {
-            star.className = index < rating ? "fa-solid fa-star text-amber-400" : "fa-regular fa-star text-slate-200";
-        });
-    };
-
-    window.submitReview = async function() {
-        const reviewText = document.getElementById('review-text-input').value.trim();
-
-        if (!activeProduct || !verifiedReviewerProfile) {
-            showToast("❌ 구매 인증이 필요합니다.");
-            return;
-        }
-
-        if (reviewText.length < 5) {
-            showToast("⚠️ 후기를 5자 이상 입력해 주세요.");
-            return;
-        }
-
-        const reviewPayload = {
-            reviewId: `REV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            productId: activeProduct.id,
-            ordererName: verifiedReviewerProfile.name,
-            carInfo: verifiedReviewerProfile.carInfo,
-            rating: selectedInteractiveRating,
-            text: reviewText,
-            timestamp: new Date().toISOString()
-        };
-
-        if (isDemoMode) {
-            localReviews.push(reviewPayload);
-            closeModal('review-write-modal');
-            showToast("✅ 후기가 등록되었습니다.");
-            loadReviewsForProduct(activeProduct.id);
-            return;
-        }
-
-        try {
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'reviews', reviewPayload.reviewId);
-            await setDoc(docRef, reviewPayload);
-
-            closeModal('review-write-modal');
-            showToast("✅ 후기가 등록되었습니다.");
-            loadReviewsForProduct(activeProduct.id);
-        } catch (err) {
-            console.error("Review save failed.", err);
-
-            localReviews.push(reviewPayload);
-            closeModal('review-write-modal');
-            showToast("⚠️ 서버 오류로 임시 등록되었습니다.");
-            loadReviewsForProduct(activeProduct.id);
-        }
-    };
 
     window.switchTab = function(activeTabId, activeViewId) {
         ['order-tab', 'track-tab'].forEach(tabId => {
