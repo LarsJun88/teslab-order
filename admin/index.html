@@ -3100,10 +3100,10 @@
                         thumbnailUrl,
                         options,
                         extraImgs,
-                        detailImageUrl: mainImageChanged ? '' : p.detailImageUrl,
-                        detailExtraImgs: extraImagesChanged ? [] : p.detailExtraImgs,
-                        detailImageOptimizationVersion: imageFieldsChanged ? 0 : p.detailImageOptimizationVersion,
-                        imageOptimizationVersion: imageFieldsChanged ? 0 : p.imageOptimizationVersion
+                        detailImageUrl: mainImageChanged ? '' : String(p.detailImageUrl || ''),
+                        detailExtraImgs: extraImagesChanged ? [] : (Array.isArray(p.detailExtraImgs) ? p.detailExtraImgs : []),
+                        detailImageOptimizationVersion: imageFieldsChanged ? 0 : Number(p.detailImageOptimizationVersion || 0),
+                        imageOptimizationVersion: imageFieldsChanged ? 0 : Number(p.imageOptimizationVersion || 0)
                     };
                 }
                 return p;
@@ -3293,8 +3293,24 @@
         });
     }
 
+    function stripUndefinedFields(value) {
+        if (Array.isArray(value)) {
+            return value.map(stripUndefinedFields);
+        }
+
+        if (value && typeof value === 'object') {
+            return Object.fromEntries(
+                Object.entries(value)
+                    .filter(([, entryValue]) => entryValue !== undefined)
+                    .map(([key, entryValue]) => [key, stripUndefinedFields(entryValue)])
+            );
+        }
+
+        return value;
+    }
+
     async function persistCatalogProducts(updatedProducts, stockOverrides = {}) {
-        let persistedProducts = updatedProducts.map(product => ({
+        let persistedProducts = updatedProducts.map(product => stripUndefinedFields({
             ...product,
             stock: Object.prototype.hasOwnProperty.call(stockOverrides, product.id)
                 ? getProductStock({ stock: stockOverrides[product.id] })
@@ -3315,12 +3331,12 @@
                     const hasOverride = Object.prototype.hasOwnProperty.call(stockOverrides, product.id);
                     const remoteProduct = remoteById.get(product.id);
 
-                    return {
+                    return stripUndefinedFields({
                         ...product,
                         stock: hasOverride
                             ? getProductStock({ stock: stockOverrides[product.id] })
                             : getProductStock(remoteProduct || product)
-                    };
+                    });
                 });
 
                 transaction.set(catalogDocRef, { products: persistedProducts });
