@@ -907,6 +907,7 @@
     let storage = null;
     let cloudFunctions = null;
     let submitOrderWithInventoryCall = null;
+    let optimizeProductDetailImagesCall = null;
     let isDemoMode = false;
     let currentUser = null;
 
@@ -1083,6 +1084,7 @@
         storage = getStorage(app);
         cloudFunctions = getFunctions(app, "asia-northeast3");
         submitOrderWithInventoryCall = httpsCallable(cloudFunctions, "submitOrderWithInventory");
+        optimizeProductDetailImagesCall = httpsCallable(cloudFunctions, "optimizeProductDetailImages");
     } catch (err) {
         console.warn("Firebase init failed. Demo mode active.", err);
         isDemoMode = true;
@@ -3546,6 +3548,41 @@
         return { complete, failureCount, optimizedCount };
     }
 
+    async function optimizeProductDetailImagesOnServer(productId) {
+        if (!optimizeProductDetailImagesCall) {
+            throw new Error('Image optimization function is unavailable.');
+        }
+
+        const result = await optimizeProductDetailImagesCall({ productId });
+        const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+        const catalogSnap = await getDoc(catalogDocRef);
+
+        if (catalogSnap.exists() && Array.isArray(catalogSnap.data().products)) {
+            applyCatalogProducts(catalogSnap.data().products);
+        }
+
+        return result?.data || {};
+    }
+
+    function getImageOptimizationErrorMessage(error) {
+        const code = String(error?.code || '');
+        const message = String(error?.message || '');
+
+        if (code.includes('not-found')) {
+            return '서버 최적화 기능이 아직 준비되지 않았습니다. 1~2분 후 새로고침해 다시 시도해 주세요.';
+        }
+
+        if (code.includes('aborted')) {
+            return '사진 정보가 처리 중 변경되었습니다. 관리자 페이지를 새로고침한 뒤 다시 시도해 주세요.';
+        }
+
+        if (message.includes('could not read or convert')) {
+            return '원본 사진을 읽거나 변환하지 못했습니다. 사진을 다시 업로드한 뒤 저장해 주세요.';
+        }
+
+        return '상세사진 최적화에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+    }
+
     window.optimizeProductDetailImages = async function(productId) {
         if (!isAdminAuthenticated) {
             showToast('관리자 인증 후 이용할 수 있습니다.');
@@ -3568,14 +3605,24 @@
             return;
         }
 
-        if (!confirm(`[${product.name}]의 대표사진과 상세 설명사진을 최대 720px로 최적화할까요?\n\n원본과 사진 순서는 그대로 보존합니다.`)) {
+        if (!confirm('[' + product.name + ']의 대표사진과 상세 설명사진을 서버에서 720px WebP로 최적화할까요?\n\n원본과 사진 순서는 그대로 보존합니다.')) {
             return;
         }
 
-        const result = await optimizeSingleProductDetailImages(productId);
-        showToast(result.complete
-            ? `상세사진 최적화 완료: ${product.name}`
-            : `일부 상세사진 변환 실패: ${product.name} (다시 실행하면 실패한 사진만 처리합니다.)`);
+        try {
+            showToast('상세사진 서버 최적화를 시작합니다: ' + product.name);
+            const result = await optimizeProductDetailImagesOnServer(productId);
+            const optimizedCount = Number(result.optimizedImageCount || 0);
+            const optimizedBytes = Number(result.optimizedBytes || 0);
+            const sizeText = optimizedBytes > 0
+                ? ' (' + Math.max(1, Math.round(optimizedBytes / 1024)) + 'KB)'
+                : '';
+
+            showToast('상세사진 최적화 완료: ' + product.name + ' · ' + optimizedCount + '장' + sizeText);
+        } catch (error) {
+            console.error('Server detail image optimization failed.', error);
+            showToast(getImageOptimizationErrorMessage(error));
+        }
     };
 
     window.optimizeAllProductImages = async function() {
@@ -3606,12 +3653,13 @@
 
         for (let productIndex = 0; productIndex < targetProducts.length; productIndex += 1) {
             const target = targetProducts[productIndex];
-            const positionText = ` (${productIndex + 1}/${targetProducts.length})`;
-            const result = await optimizeSingleProductDetailImages(target.id, positionText);
 
-            if (result.complete) {
+            try {
+                showToast('상세사진 서버 최적화 중 (' + (productIndex + 1) + '/' + targetProducts.length + '): ' + target.name);
+                await optimizeProductDetailImagesOnServer(target.id);
                 successCount += 1;
-            } else {
+            } catch (error) {
+                console.error('Server detail image optimization failed.', error);
                 partialFailureCount += 1;
             }
         }

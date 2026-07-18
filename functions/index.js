@@ -6,12 +6,17 @@ const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getStorage } = require("firebase-admin/storage");
+const sharp = require("sharp");
+const { randomUUID } = require("crypto");
 
 const TELEGRAM_BOT_TOKEN = defineSecret("TELEGRAM_BOT_TOKEN");
 const TELEGRAM_CHAT_ID = defineSecret("TELEGRAM_CHAT_ID");
 const APP_ID = "tkc-co-order-2026";
 const MAX_PRODUCT_STOCK = 999;
 const DEFAULT_PRODUCT_STOCK = 999;
+const DETAIL_IMAGE_MAX_DIMENSION = 720;
+const DETAIL_IMAGE_QUALITY = 68;
 
 initializeApp();
 
@@ -72,6 +77,103 @@ function buildTelegramMessage(order) {
   ].join("\n");
 }
 
+
+function getProductOriginalExtraImageUrls(product) {
+  return String(product?.extraImgs || '')
+    .split(/[\r\n,]+/)
+    .map((url) => url.trim())
+    .filter(Boolean);
+}
+
+function getFirebaseStorageObjectPath(imageUrl) {
+  const parsedUrl = new URL(String(imageUrl || ''));
+  if (parsedUrl.hostname !== 'firebasestorage.googleapis.com') return null;
+
+  const marker = '/o/';
+  const markerIndex = parsedUrl.pathname.indexOf(marker);
+  if (markerIndex === -1) return null;
+
+  return decodeURIComponent(parsedUrl.pathname.slice(markerIndex + marker.length));
+}
+
+function buildFirebaseDownloadUrl(bucketName, objectPath, token) {
+  return 'https://firebasestorage.googleapis.com/v0/b/' +
+    encodeURIComponent(bucketName) +
+    '/o/' +
+    encodeURIComponent(objectPath) +
+    '?alt=media&token=' +
+    encodeURIComponent(token);
+}
+
+function safeStoragePathSegment(value) {
+  return String(value || 'product')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'product';
+}
+
+async function downloadProductImageBuffer(imageUrl) {
+  const storageBucket = getStorage().bucket();
+  const objectPath = getFirebaseStorageObjectPath(imageUrl);
+
+  if (objectPath) {
+    const [buffer] = await storageBucket.file(objectPath).download();
+    return buffer;
+  }
+
+  const response = await fetch(String(imageUrl), {
+    headers: { 'User-Agent': 'TeslabOrderImageOptimizer/1.0' }
+  });
+
+  if (!response.ok) {
+    throw new Error('Image download failed with HTTP ' + response.status + '.');
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function storeOptimizedProductImage(sourceBuffer, productId, imageIndex) {
+  const optimizedBuffer = await sharp(sourceBuffer, {
+    limitInputPixels: 40000000,
+    failOn: 'none'
+  })
+    .rotate()
+    .resize({
+      width: DETAIL_IMAGE_MAX_DIMENSION,
+      height: DETAIL_IMAGE_MAX_DIMENSION,
+      fit: 'inside',
+      withoutEnlargement: true
+    })
+    .webp({ quality: DETAIL_IMAGE_QUALITY, effort: 4 })
+    .toBuffer();
+
+  const storageBucket = getStorage().bucket();
+  const objectPath = 'artifacts/' + APP_ID + '/public/data/images/optimized/' +
+    Date.now() + '_' + randomUUID() + '_' + safeStoragePathSegment(productId) +
+    '_' + imageIndex + '_detail_720.webp';
+  const downloadToken = randomUUID();
+
+  await storageBucket.file(objectPath).save(optimizedBuffer, {
+    resumable: false,
+    metadata: {
+      contentType: 'image/webp',
+      cacheControl: 'public,max-age=31536000,immutable',
+      metadata: {
+        firebaseStorageDownloadTokens: downloadToken
+      }
+    }
+  });
+
+  return {
+    url: buildFirebaseDownloadUrl(storageBucket.name, objectPath, downloadToken),
+    bytes: optimizedBuffer.length
+  };
+}
+
+async function optimizeProductImageSource(imageUrl, productId, imageIndex) {
+  const sourceBuffer = await downloadProductImageBuffer(imageUrl);
+  return storeOptimizedProductImage(sourceBuffer, productId, imageIndex);
+}
 
 function getProductStock(product) {
   const stock = Number(product?.stock);
@@ -204,6 +306,108 @@ exports.submitOrderWithInventory = onCall(
         )
       };
     });
+  }
+);
+
+exports.optimizeProductDetailImages = onCall(
+  { region: 'asia-northeast3' },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in is required to optimize product images.');
+    }
+
+    const productId = String(request.data?.productId || '').trim();
+    if (!productId) {
+      throw new HttpsError('invalid-argument', 'A product ID is required.');
+    }
+
+    const db = getFirestore();
+    const catalogRef = db.doc('artifacts/' + APP_ID + '/public/data/config/catalog');
+    const initialCatalogSnap = await catalogRef.get();
+    const initialProducts = initialCatalogSnap.exists && Array.isArray(initialCatalogSnap.data().products)
+      ? initialCatalogSnap.data().products
+      : [];
+    const initialProduct = initialProducts.find((product) => product.id === productId);
+
+    if (!initialProduct || !String(initialProduct.img || '').trim()) {
+      throw new HttpsError('not-found', 'The product or its main image could not be found.');
+    }
+
+    const originalMainImageUrl = String(initialProduct.img).trim();
+    const originalExtraImageUrls = getProductOriginalExtraImageUrls(initialProduct);
+
+    let optimizedMainImage;
+    const optimizedExtraImages = [];
+
+    try {
+      optimizedMainImage = await optimizeProductImageSource(originalMainImageUrl, productId, 0);
+
+      for (let index = 0; index < originalExtraImageUrls.length; index += 1) {
+        optimizedExtraImages.push(
+          await optimizeProductImageSource(originalExtraImageUrls[index], productId, index + 1)
+        );
+      }
+    } catch (error) {
+      logger.error('Product detail image optimization failed.', {
+        productId,
+        error: error?.message || String(error)
+      });
+      throw new HttpsError(
+        'internal',
+        'The server could not read or convert one of the original images.'
+      );
+    }
+
+    const optimizationResult = await db.runTransaction(async (transaction) => {
+      const currentCatalogSnap = await transaction.get(catalogRef);
+      const currentProducts = currentCatalogSnap.exists && Array.isArray(currentCatalogSnap.data().products)
+        ? currentCatalogSnap.data().products
+        : [];
+      const currentProduct = currentProducts.find((product) => product.id === productId);
+
+      if (!currentProduct) {
+        throw new HttpsError('not-found', 'The product was removed while images were being optimized.');
+      }
+
+      const currentMainImageUrl = String(currentProduct.img || '').trim();
+      const currentExtraImageUrls = getProductOriginalExtraImageUrls(currentProduct);
+
+      if (currentMainImageUrl !== originalMainImageUrl ||
+          currentExtraImageUrls.join('\n') !== originalExtraImageUrls.join('\n')) {
+        throw new HttpsError(
+          'aborted',
+          'The product images changed while optimization was running. Reload and try again.'
+        );
+      }
+
+      const updatedProducts = currentProducts.map((product) => product.id === productId
+        ? {
+            ...product,
+            detailImageUrl: optimizedMainImage.url,
+            detailExtraImgs: optimizedExtraImages.map((image) => image.url),
+            detailImageOptimizationVersion: 3,
+            detailImagesOptimizedAt: new Date().toISOString()
+          }
+        : product);
+
+      transaction.update(catalogRef, { products: updatedProducts });
+
+      return {
+        detailImageUrl: optimizedMainImage.url,
+        detailExtraImgs: optimizedExtraImages.map((image) => image.url),
+        optimizedImageCount: optimizedExtraImages.length + 1,
+        optimizedBytes: optimizedMainImage.bytes +
+          optimizedExtraImages.reduce((total, image) => total + image.bytes, 0)
+      };
+    });
+
+    logger.info('Product detail images optimized.', {
+      productId,
+      optimizedImageCount: optimizationResult.optimizedImageCount,
+      optimizedBytes: optimizationResult.optimizedBytes
+    });
+
+    return optimizationResult;
   }
 );
 
