@@ -17,6 +17,10 @@ const MAX_PRODUCT_STOCK = 999;
 const DEFAULT_PRODUCT_STOCK = 999;
 const DETAIL_IMAGE_MAX_DIMENSION = 720;
 const DETAIL_IMAGE_QUALITY = 68;
+const THUMBNAIL_IMAGE_MAX_WIDTH = 320;
+const THUMBNAIL_IMAGE_MAX_HEIGHT = 240;
+const THUMBNAIL_IMAGE_QUALITY = 58;
+const THUMBNAIL_OPTIMIZATION_VERSION = 2;
 
 initializeApp();
 
@@ -132,25 +136,32 @@ async function downloadProductImageBuffer(imageUrl) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function storeOptimizedProductImage(sourceBuffer, productId, imageIndex) {
+async function storeOptimizedProductImage(sourceBuffer, productId, imageIndex, options = {}) {
+  const {
+    maxWidth = DETAIL_IMAGE_MAX_DIMENSION,
+    maxHeight = DETAIL_IMAGE_MAX_DIMENSION,
+    quality = DETAIL_IMAGE_QUALITY,
+    suffix = 'detail_720'
+  } = options;
+
   const optimizedBuffer = await sharp(sourceBuffer, {
     limitInputPixels: 40000000,
     failOn: 'none'
   })
     .rotate()
     .resize({
-      width: DETAIL_IMAGE_MAX_DIMENSION,
-      height: DETAIL_IMAGE_MAX_DIMENSION,
+      width: maxWidth,
+      height: maxHeight,
       fit: 'inside',
       withoutEnlargement: true
     })
-    .webp({ quality: DETAIL_IMAGE_QUALITY, effort: 4 })
+    .webp({ quality, effort: 4 })
     .toBuffer();
 
   const storageBucket = getStorage().bucket();
   const objectPath = 'artifacts/' + APP_ID + '/public/data/images/optimized/' +
     Date.now() + '_' + randomUUID() + '_' + safeStoragePathSegment(productId) +
-    '_' + imageIndex + '_detail_720.webp';
+    '_' + imageIndex + '_' + suffix + '.webp';
   const downloadToken = randomUUID();
 
   await storageBucket.file(objectPath).save(optimizedBuffer, {
@@ -170,9 +181,9 @@ async function storeOptimizedProductImage(sourceBuffer, productId, imageIndex) {
   };
 }
 
-async function optimizeProductImageSource(imageUrl, productId, imageIndex) {
+async function optimizeProductImageSource(imageUrl, productId, imageIndex, options = {}) {
   const sourceBuffer = await downloadProductImageBuffer(imageUrl);
-  return storeOptimizedProductImage(sourceBuffer, productId, imageIndex);
+  return storeOptimizedProductImage(sourceBuffer, productId, imageIndex, options);
 }
 
 function getProductStock(product) {
@@ -216,7 +227,7 @@ function validateOrderForInventory(order) {
 }
 
 exports.submitOrderWithInventory = onCall(
-  { region: "asia-northeast3" },
+  { region: "asia-northeast3", invoker: "public" },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "로그인 연결 후 주문할 수 있습니다.");
@@ -309,8 +320,128 @@ exports.submitOrderWithInventory = onCall(
   }
 );
 
+exports.optimizeProductThumbnails = onCall(
+  {
+    region: 'asia-northeast3',
+    invoker: 'public',
+    timeoutSeconds: 540,
+    memory: '1GiB'
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in is required to optimize product thumbnails.');
+    }
+
+    const requestedProductIds = Array.isArray(request.data?.productIds)
+      ? request.data.productIds.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+    const requestedProductIdSet = new Set(requestedProductIds);
+    const force = request.data?.force !== false;
+
+    const db = getFirestore();
+    const catalogRef = db.doc('artifacts/' + APP_ID + '/public/data/config/catalog');
+    const initialCatalogSnap = await catalogRef.get();
+    const initialProducts = initialCatalogSnap.exists && Array.isArray(initialCatalogSnap.data().products)
+      ? initialCatalogSnap.data().products
+      : [];
+
+    const targets = initialProducts.filter((product) => {
+      if (!String(product?.img || '').trim()) return false;
+      if (requestedProductIdSet.size > 0) return requestedProductIdSet.has(product.id);
+
+      const hasCurrentThumbnail = Boolean(String(product.thumbnailUrl || '').trim()) &&
+        Number(product.thumbnailOptimizationVersion || 0) >= THUMBNAIL_OPTIMIZATION_VERSION;
+      return force || !hasCurrentThumbnail;
+    });
+
+    if (targets.length === 0) {
+      return {
+        requestedProductCount: 0,
+        optimizedProductCount: 0,
+        failedProductIds: [],
+        optimizedBytes: 0
+      };
+    }
+
+    const optimizedByProductId = new Map();
+    const failedProductIds = [];
+
+    for (const product of targets) {
+      try {
+        const sourceUrl = String(product.img).trim();
+        const sourceBuffer = await downloadProductImageBuffer(sourceUrl);
+        const thumbnail = await storeOptimizedProductImage(sourceBuffer, product.id, 0, {
+          maxWidth: THUMBNAIL_IMAGE_MAX_WIDTH,
+          maxHeight: THUMBNAIL_IMAGE_MAX_HEIGHT,
+          quality: THUMBNAIL_IMAGE_QUALITY,
+          suffix: 'listing_320'
+        });
+
+        optimizedByProductId.set(product.id, {
+          sourceUrl,
+          thumbnailUrl: thumbnail.url,
+          bytes: thumbnail.bytes
+        });
+      } catch (error) {
+        logger.warn('Product thumbnail optimization failed.', {
+          productId: product.id,
+          error: error?.message || String(error)
+        });
+        failedProductIds.push(product.id);
+      }
+    }
+
+    if (optimizedByProductId.size === 0) {
+      throw new HttpsError('internal', 'The server could not read or convert the selected product images.');
+    }
+
+    const optimizationResult = await db.runTransaction(async (transaction) => {
+      const currentCatalogSnap = await transaction.get(catalogRef);
+      const currentProducts = currentCatalogSnap.exists && Array.isArray(currentCatalogSnap.data().products)
+        ? currentCatalogSnap.data().products
+        : [];
+
+      let updatedProductCount = 0;
+      const updatedProducts = currentProducts.map((product) => {
+        const optimized = optimizedByProductId.get(product.id);
+        if (!optimized || String(product.img || '').trim() !== optimized.sourceUrl) return product;
+
+        updatedProductCount += 1;
+        return {
+          ...product,
+          thumbnailUrl: optimized.thumbnailUrl,
+          thumbnailOptimizationVersion: THUMBNAIL_OPTIMIZATION_VERSION,
+          thumbnailOptimizedAt: new Date().toISOString()
+        };
+      });
+
+      transaction.update(catalogRef, { products: updatedProducts });
+
+      return {
+        updatedProductCount,
+        optimizedBytes: Array.from(optimizedByProductId.values())
+          .reduce((total, thumbnail) => total + thumbnail.bytes, 0)
+      };
+    });
+
+    logger.info('Product thumbnails optimized.', {
+      requestedProductCount: targets.length,
+      optimizedProductCount: optimizationResult.updatedProductCount,
+      failedProductCount: failedProductIds.length,
+      optimizedBytes: optimizationResult.optimizedBytes
+    });
+
+    return {
+      requestedProductCount: targets.length,
+      optimizedProductCount: optimizationResult.updatedProductCount,
+      failedProductIds,
+      optimizedBytes: optimizationResult.optimizedBytes
+    };
+  }
+);
+
 exports.optimizeProductDetailImages = onCall(
-  { region: 'asia-northeast3' },
+  { region: 'asia-northeast3', invoker: 'public' },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in is required to optimize product images.');

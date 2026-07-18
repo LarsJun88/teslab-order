@@ -519,7 +519,7 @@
                                 <i class="fa-solid fa-images"></i> 상품 상세사진 전체 최적화
                             </button>
                             <button type="button" onclick="generateMissingThumbnails()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i> 목록 썸네일만 생성
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> 첫 페이지 썸네일 최적화
                             </button>
                             <button type="button" onclick="openAddProductModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
                                 <i class="fa-solid fa-plus"></i> 신규 품목 추가
@@ -908,6 +908,7 @@
     let cloudFunctions = null;
     let submitOrderWithInventoryCall = null;
     let optimizeProductDetailImagesCall = null;
+    let optimizeProductThumbnailsCall = null;
     let isDemoMode = false;
     let currentUser = null;
 
@@ -1085,6 +1086,7 @@
         cloudFunctions = getFunctions(app, "asia-northeast3");
         submitOrderWithInventoryCall = httpsCallable(cloudFunctions, "submitOrderWithInventory");
         optimizeProductDetailImagesCall = httpsCallable(cloudFunctions, "optimizeProductDetailImages");
+        optimizeProductThumbnailsCall = httpsCallable(cloudFunctions, "optimizeProductThumbnails");
     } catch (err) {
         console.warn("Firebase init failed. Demo mode active.", err);
         isDemoMode = true;
@@ -1188,6 +1190,17 @@
     function getProductThumbnailUrl(product) {
         const thumbnailUrl = String(product?.thumbnailUrl || '').trim();
         return thumbnailUrl || String(product?.img || DEFAULT_IMAGE_URL);
+    }
+
+    function isProductThumbnailOptimized(product) {
+        const thumbnailUrl = String(product?.thumbnailUrl || '').trim();
+        const thumbnailVersion = Number(product?.thumbnailOptimizationVersion || 0);
+
+        return Boolean(thumbnailUrl) && thumbnailVersion >= 2;
+    }
+
+    function needsProductThumbnailOptimization(product) {
+        return Boolean(product?.img) && !isProductThumbnailOptimized(product);
     }
 
     function getProductDetailImageUrl(product) {
@@ -2760,6 +2773,7 @@
 
         container.innerHTML = products.map((prod, idx) => {
             const thumbnailUrl = prod.thumbnailUrl || prod.img || '../assets/product-placeholder.svg';
+            const thumbnailOptimized = isProductThumbnailOptimized(prod);
             const stock = getProductStock(prod);
 
             return `
@@ -2771,7 +2785,7 @@
                         <strong class="text-slate-800 text-sm font-bold block truncate">${escapeHtml(prod.name || '')}</strong>
                         <p class="text-[11px] text-slate-500">${Number(prod.price || 0).toLocaleString()}원 | 옵션 ${prod.options ? prod.options.length : 0}개 | <strong class="${stock === 0 ? 'text-rose-600' : stock <= 5 ? 'text-amber-600' : 'text-emerald-600'}">재고 ${stock}개${stock === 0 ? ' · 자동 품절' : ''}</strong></p>
                         <div class="flex flex-wrap gap-x-2 gap-y-0.5">
-                            <span class="text-[10px] ${prod.thumbnailUrl ? 'text-emerald-600' : 'text-amber-600'} font-bold">${prod.thumbnailUrl ? '썸네일 적용' : '목록 원본 사용 중'}</span>
+                            <span class="text-[10px] ${thumbnailOptimized ? 'text-emerald-600' : 'text-amber-600'} font-bold">${thumbnailOptimized ? '목록 320px 적용' : '첫 페이지 최적화 필요'}</span>
                             <span class="text-[10px] ${isProductDetailOptimized(prod) ? 'text-emerald-600' : 'text-amber-600'} font-bold">${isProductDetailOptimized(prod) ? '상세사진 720px 적용' : '상세사진 최적화 필요'}</span>
                         </div>
                     </div>
@@ -3288,10 +3302,10 @@
 
     async function createThumbnailFile(imageUrl, productName) {
         return createOptimizedImageFile(await fetchImageBlob(imageUrl), productName, {
-            maxWidth: 480,
-            maxHeight: 360,
-            quality: 0.72,
-            suffix: 'thumbnail'
+            maxWidth: 320,
+            maxHeight: 240,
+            quality: 0.58,
+            suffix: 'listing_320'
         });
     }
 
@@ -3394,57 +3408,87 @@
         }
     };
 
+    async function optimizeProductThumbnailsOnServer(productIds, force = false) {
+        if (!optimizeProductThumbnailsCall) {
+            throw new Error('Thumbnail optimization function is unavailable.');
+        }
+
+        const result = await optimizeProductThumbnailsCall({ productIds, force });
+        const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
+        const catalogSnap = await getDoc(catalogDocRef);
+
+        if (catalogSnap.exists() && Array.isArray(catalogSnap.data().products)) {
+            applyCatalogProducts(catalogSnap.data().products);
+        }
+
+        return result?.data || {};
+    }
+
+    function getThumbnailOptimizationErrorMessage(error) {
+        const code = String(error?.code || '');
+
+        if (code.includes('not-found')) {
+            return '서버 썸네일 최적화 기능이 아직 준비되지 않았습니다. 1~2분 후 새로고침해 다시 시도해 주세요.';
+        }
+
+        return '목록 썸네일 최적화에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+    }
+
     window.generateThumbnailForProduct = async function(index) {
+        if (!isAdminAuthenticated) {
+            showToast('관리자 인증 후 이용할 수 있습니다.');
+            return;
+        }
+
         const product = products[index];
         if (!product?.img) {
-            showToast("❌ 대표 이미지가 없는 상품입니다.");
+            showToast('대표 이미지가 없는 상품입니다.');
             return;
         }
 
         try {
-            showToast(`썸네일 생성 중: ${product.name}`);
-            const thumbnailFile = await createThumbnailFile(product.img, product.name);
-            const thumbnailUrl = await uploadFileToStorage(thumbnailFile);
-            const updatedProducts = products.map((item, itemIndex) => itemIndex === index ? { ...item, thumbnailUrl } : item);
-            await persistCatalogProducts(updatedProducts);
-            showToast("✅ 목록용 WebP 썸네일을 저장했습니다.");
-        } catch (err) {
-            console.error('Thumbnail generation failed.', err);
-            showToast("❌ 자동 생성에 실패했습니다. 수정 화면에서 썸네일을 직접 업로드해 주세요.");
+            showToast('목록 썸네일 최적화 중: ' + product.name);
+            const result = await optimizeProductThumbnailsOnServer([product.id]);
+            showToast('첫 페이지용 320px WebP 썸네일을 저장했습니다: ' + (result.optimizedProductCount || 0) + '개');
+        } catch (error) {
+            console.error('Product thumbnail optimization failed.', error);
+            showToast(getThumbnailOptimizationErrorMessage(error));
         }
     };
 
     window.generateMissingThumbnails = async function() {
-        const targetProducts = products.filter(product => product.img && !product.thumbnailUrl);
-        if (targetProducts.length === 0) {
-            showToast("✅ 모든 상품에 썸네일이 설정되어 있습니다.");
+        if (!isAdminAuthenticated) {
+            showToast('관리자 인증 후 이용할 수 있습니다.');
             return;
         }
 
-        if (!confirm(`${targetProducts.length}개 상품의 480px WebP 썸네일을 생성할까요?`)) return;
-
-        let updatedProducts = [...products];
-        let successCount = 0;
-        let failureCount = 0;
-
-        for (const product of targetProducts) {
-            try {
-                showToast(`썸네일 생성 중 (${successCount + failureCount + 1}/${targetProducts.length})`);
-                const thumbnailFile = await createThumbnailFile(product.img, product.name);
-                const thumbnailUrl = await uploadFileToStorage(thumbnailFile);
-                updatedProducts = updatedProducts.map(item => item.id === product.id ? { ...item, thumbnailUrl } : item);
-                successCount += 1;
-            } catch (err) {
-                console.warn(`Thumbnail generation failed for ${product.name}.`, err);
-                failureCount += 1;
-            }
+        const targetProducts = products.filter(needsProductThumbnailOptimization);
+        if (targetProducts.length === 0) {
+            showToast('모든 상품이 첫 페이지용 320px WebP 썸네일을 사용하고 있습니다.');
+            return;
         }
 
-        if (successCount > 0) await persistCatalogProducts(updatedProducts);
-        showToast(`✅ 썸네일 생성 완료: ${successCount}개${failureCount ? `, 실패 ${failureCount}개` : ''}`);
+        if (!confirm(targetProducts.length + '개 상품의 첫 페이지용 320px WebP 썸네일을 서버에서 최적화할까요?\n\n원본 사진은 유지되며, 작업 중에는 관리자 페이지를 닫지 마세요.')) {
+            return;
+        }
+
+        try {
+            showToast('첫 페이지 썸네일 서버 최적화를 시작합니다.');
+            const result = await optimizeProductThumbnailsOnServer(targetProducts.map(product => product.id));
+            const failedCount = Array.isArray(result.failedProductIds) ? result.failedProductIds.length : 0;
+            const sizeText = Number(result.optimizedBytes || 0) > 0
+                ? ' (' + Math.max(1, Math.round(Number(result.optimizedBytes) / 1024)) + 'KB)'
+                : '';
+
+            showToast('첫 페이지 썸네일 최적화 완료: ' + (result.optimizedProductCount || 0) + '개' +
+                (failedCount ? ', 실패 ' + failedCount + '개' : '') + sizeText);
+        } catch (error) {
+            console.error('Product thumbnail optimization failed.', error);
+            showToast(getThumbnailOptimizationErrorMessage(error));
+        }
     };
 
-    async function optimizeSingleProductDetailImages(productId, positionText = '') {
+        async function optimizeSingleProductDetailImages(productId, positionText = '') {
         let product = products.find(item => item.id === productId);
         if (!product?.img) {
             return { complete: false, failureCount: 1, optimizedCount: 0 };
@@ -3478,10 +3522,10 @@
                 if (!String(product?.thumbnailUrl || '').trim()) {
                     try {
                         const thumbnailFile = await createOptimizedImageFile(mainBlob, product.name, {
-                            maxWidth: 480,
-                            maxHeight: 360,
-                            quality: 0.72,
-                            suffix: 'thumbnail'
+                            maxWidth: 320,
+                            maxHeight: 240,
+                            quality: 0.58,
+                            suffix: 'listing_320'
                         });
                         const thumbnailUrl = await uploadFileToStorage(thumbnailFile);
                         await persistCatalogProducts(products.map(item => item.id === product.id ? {
@@ -3709,10 +3753,10 @@
                         suffix: 'detail_720',
                     }),
                     createOptimizedImageFile(files[0], productName, {
-                        maxWidth: 480,
-                        maxHeight: 360,
-                        quality: 0.72,
-                        suffix: 'thumbnail',
+                        maxWidth: 320,
+                        maxHeight: 240,
+                        quality: 0.58,
+                        suffix: 'listing_320',
                     }),
                 ]);
                 const [detailUrl, thumbnailUrl] = await Promise.all([
@@ -3722,16 +3766,16 @@
 
                 document.getElementById('edit-prod-img').value = detailUrl;
                 document.getElementById('edit-prod-thumbnail').value = thumbnailUrl;
-                showToast('대표 이미지와 480px 목록 썸네일을 함께 저장했습니다.');
+                showToast('대표 이미지와 320px 목록 썸네일을 함께 저장했습니다.');
             } else if (targetId === 'edit-prod-thumbnail') {
                 const thumbnailFile = await createOptimizedImageFile(files[0], files[0].name, {
-                    maxWidth: 480,
-                    maxHeight: 360,
-                    quality: 0.72,
-                    suffix: 'thumbnail',
+                    maxWidth: 320,
+                    maxHeight: 240,
+                    quality: 0.58,
+                    suffix: 'listing_320',
                 });
                 document.getElementById(targetId).value = await uploadFileToStorage(thumbnailFile);
-                showToast('480px 목록 썸네일을 저장했습니다.');
+                showToast('320px 목록 썸네일을 저장했습니다.');
             } else {
                 document.getElementById(targetId).value = await uploadFileToStorage(files[0]);
                 showToast('이미지 업로드가 완료되었습니다.');
