@@ -434,7 +434,7 @@
                                 <th class="p-4">선택 품목</th>
                                 <th class="p-4">금액</th>
                                 <th class="p-4">배송 주소</th>
-                                <th class="p-4 text-center">상태 / 송장 / 삭제</th>
+                                <th class="p-4 text-center">상태 / 복사 / 송장 / 삭제</th>
                             </tr>
                             </thead>
                             <tbody id="admin-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
@@ -471,7 +471,7 @@
                                 <th class="p-4">선택 품목</th>
                                 <th class="p-4">금액</th>
                                 <th class="p-4">배송 주소</th>
-                                <th class="p-4 text-center">상태 / 송장 / 삭제</th>
+                                <th class="p-4 text-center">상태 / 복사 / 송장 / 삭제</th>
                             </tr>
                             </thead>
                             <tbody id="completed-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
@@ -2473,13 +2473,18 @@
                         <p class="text-[10px] text-amber-600 italic truncate" title="${order.shippingMemo || ''}">메모: ${order.shippingMemo || '없음'}</p>
                     </td>
                     <td class="p-3 text-center space-y-2 max-w-[170px]">
-                        <select onchange="updateOrderStatus('${order.orderId}', this.value)" class="rounded border border-slate-200 px-2 py-1 text-[11px] font-bold focus:border-indigo-500 bg-white">
+                        <div class="flex items-stretch gap-1">
+                            <select onchange="updateOrderStatus('${order.orderId}', this.value)" class="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-[11px] font-bold focus:border-indigo-500 bg-white">
                             <option value="입금대기" ${order.status === "입금대기" ? "selected" : ""}>입금대기</option>
                             <option value="입금완료" ${order.status === "입금완료" ? "selected" : ""}>입금완료</option>
                             <option value="배송준비" ${order.status === "배송준비" ? "selected" : ""}>배송준비</option>
                             <option value="배송중" ${order.status === "배송중" ? "selected" : ""}>배송중</option>
                             <option value="배송완료" ${order.status === "배송완료" ? "selected" : ""}>배송완료</option>
-                        </select>
+                            </select>
+                            <button type="button" onclick="copyOrderForExcel('${order.orderId}')" class="shrink-0 rounded border border-indigo-100 bg-indigo-50 px-2 py-1 text-[10px] font-extrabold text-indigo-700 transition hover:bg-indigo-100" title="이름, 연락처, 주소, 주문품목, 금액을 엑셀 한 행으로 복사합니다.">
+                                <i class="fa-solid fa-copy mr-1"></i>복사
+                            </button>
+                        </div>
 
                         <div class="space-y-1 bg-slate-50 p-2 rounded-lg border border-slate-200 text-left">
                             <select id="courier-select-${order.orderId}" class="w-full rounded border border-slate-200 px-1 py-0.5 text-[10px] font-semibold bg-white">
@@ -2563,6 +2568,64 @@
 
     window.filterCompletedOrders = function() {
         renderCompletedOrdersUI(globalOrders);
+    };
+
+    function getExcelOrderRow(order) {
+        const address = [
+            order.postalCode ? `[${order.postalCode}]` : "",
+            order.addressBasic || "",
+            order.addressDetail || ""
+        ].filter(Boolean).join(" ");
+        const items = Array.isArray(order.cart)
+            ? order.cart.map(item => `${item.optionName || ""} x${Number(item.quantity || 0)}`).join(" | ")
+            : "";
+
+        return [
+            order.ordererName || "",
+            order.ordererPhone || "",
+            address,
+            items,
+            Number(order.finalTotal || 0)
+        ].map(value => String(value).replace(/[\t\r\n]+/g, " ")).join("\t");
+    }
+
+    async function writeTextToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        const copied = document.execCommand("copy");
+        textarea.remove();
+
+        if (!copied) {
+            throw new Error("Clipboard copy was rejected");
+        }
+    }
+
+    window.copyOrderForExcel = async function(orderId) {
+        const order = globalOrders.find(item => item.orderId === orderId) || localOrders.find(item => item.orderId === orderId);
+
+        if (!order) {
+            showToast("❌ 복사할 주문 정보를 찾을 수 없습니다.");
+            return;
+        }
+
+        try {
+            await writeTextToClipboard(getExcelOrderRow(order));
+            showToast("📋 엑셀 붙여넣기용 주문 정보를 복사했습니다.");
+        } catch (error) {
+            console.error("Order clipboard copy failed.", error);
+            showToast("❌ 복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+        }
     };
 
     window.updateOrderStatus = async function(orderId, newStatus) {
