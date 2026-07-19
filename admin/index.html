@@ -490,7 +490,7 @@
                     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
                         <div>
                             <h3 class="font-bold text-slate-900 text-base mb-1">📊 통계</h3>
-                            <p class="text-xs text-slate-400">전체, 월별, 년도별로 주문 수량과 판매 금액을 확인합니다.</p>
+                            <p class="text-xs text-slate-400">전체, 월별, 년도별 주문 수량과 배송비 차액을 포함한 판매 금액을 확인합니다.</p>
                         </div>
                         <div class="flex flex-col sm:flex-row gap-2">
                             <div class="flex gap-2 bg-slate-50 border border-slate-100 p-1 rounded-xl">
@@ -502,10 +502,18 @@
                                 <select id="stats-period-select" onchange="changeStatsPeriod(this.value)" class="w-full sm:w-40 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">
                                 </select>
                             </div>
+                            <div class="flex gap-1 bg-slate-50 border border-slate-100 p-1 rounded-xl" aria-label="통계 그래프 형태">
+                                <button type="button" onclick="switchStatsChart('bar')" id="stats-chart-bar" class="px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition">
+                                    <i class="fa-solid fa-chart-bar mr-1"></i>막대
+                                </button>
+                                <button type="button" onclick="switchStatsChart('pie')" id="stats-chart-pie" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">
+                                    <i class="fa-solid fa-chart-pie mr-1"></i>원형
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-6">
                         <div class="bg-slate-50 border border-slate-100 rounded-xl p-4">
                             <span class="text-[10px] font-bold text-slate-400 block uppercase">조회 기준</span>
                             <span class="text-base font-extrabold text-slate-800" id="stats-current-label">전체</span>
@@ -513,11 +521,22 @@
                         <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
                             <span class="text-[10px] font-bold text-indigo-500 block uppercase">총 주문 수량</span>
                             <span class="text-base font-extrabold text-indigo-900" id="stats-summary-qty">0개</span>
+                            <span class="text-[10px] font-semibold text-indigo-600 block mt-1" id="stats-summary-orders">0건 주문</span>
                         </div>
                         <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
                             <span class="text-[10px] font-bold text-emerald-600 block uppercase">판매 금액</span>
                             <span class="text-base font-extrabold text-emerald-900" id="stats-summary-sales">0원</span>
-                            <span class="text-[10px] font-semibold text-emerald-600 block mt-1" id="stats-summary-orders">0건 주문</span>
+                            <span class="text-[10px] font-semibold text-emerald-600 block mt-1">상품금액 + 배송비 차액</span>
+                        </div>
+                        <div class="bg-sky-50 border border-sky-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-sky-600 block uppercase">총 택배비</span>
+                            <span class="text-base font-extrabold text-sky-900" id="stats-summary-shipping-total">0원</span>
+                            <span class="text-[10px] font-semibold text-sky-600 block mt-1">주문당 4,000원 기준</span>
+                        </div>
+                        <div class="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                            <span class="text-[10px] font-bold text-amber-600 block uppercase">계약 택배비</span>
+                            <span class="text-base font-extrabold text-amber-900" id="stats-summary-contract-shipping">0원</span>
+                            <span class="text-[10px] font-semibold text-amber-600 block mt-1">주문당 2,800원 기준</span>
                         </div>
                     </div>
 
@@ -529,7 +548,7 @@
                             <tr class="bg-slate-50 text-slate-400 font-bold border-b border-slate-100">
                                 <th class="p-3">품목</th>
                                 <th class="p-3 text-right">총 주문량</th>
-                                <th class="p-3 text-right">매출액</th>
+                                <th class="p-3 text-right">상품 판매금액</th>
                             </tr>
                             </thead>
                             <tbody id="stats-table-body" class="divide-y divide-slate-100 text-slate-700 font-semibold"></tbody>
@@ -1122,6 +1141,9 @@
     let isSubmittingOrder = false;
     let activeStatsMode = "all";
     let activeStatsPeriod = "";
+    let activeStatsChart = "bar";
+    const CUSTOMER_SHIPPING_FEE = 4000;
+    const CONTRACT_SHIPPING_FEE = 2800;
 
     try {
         app = initializeApp(firebaseConfig);
@@ -2768,12 +2790,109 @@
         renderAdminStatistics();
     };
 
+    function getStatsChartButtonClass(isActive) {
+        return isActive
+            ? "px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition"
+            : "px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition";
+    }
+
+    function renderStatsChartControls() {
+        const barBtn = document.getElementById('stats-chart-bar');
+        const pieBtn = document.getElementById('stats-chart-pie');
+
+        if (barBtn) {
+            barBtn.className = getStatsChartButtonClass(activeStatsChart === "bar");
+            barBtn.setAttribute('aria-pressed', String(activeStatsChart === "bar"));
+        }
+
+        if (pieBtn) {
+            pieBtn.className = getStatsChartButtonClass(activeStatsChart === "pie");
+            pieBtn.setAttribute('aria-pressed', String(activeStatsChart === "pie"));
+        }
+    }
+
+    window.switchStatsChart = function(chartType) {
+        activeStatsChart = chartType === "pie" ? "pie" : "bar";
+        renderAdminStatistics();
+    };
+
+    function renderStatsChart(chartContainer, sortedStats, totalQty) {
+        const palette = [
+            { bar: 'bg-indigo-600', hex: '#4f46e5' },
+            { bar: 'bg-teal-500', hex: '#14b8a6' },
+            { bar: 'bg-emerald-500', hex: '#10b981' },
+            { bar: 'bg-amber-500', hex: '#f59e0b' },
+            { bar: 'bg-rose-500', hex: '#f43f5e' },
+            { bar: 'bg-cyan-500', hex: '#06b6d4' }
+        ];
+
+        if (activeStatsChart === "bar") {
+            const maxVal = Math.max(...sortedStats.map(([, value]) => value.count), 1);
+
+            chartContainer.innerHTML = sortedStats.map(([name, value], index) => {
+                const percent = (value.count / maxVal) * 100;
+                const color = palette[index % palette.length];
+
+                return `
+                    <div class="space-y-1 text-xs">
+                        <div class="flex justify-between gap-4 font-semibold">
+                            <span class="text-slate-700 truncate">${escapeHtml(name)}</span>
+                            <span class="text-slate-900 font-bold shrink-0">${value.count.toLocaleString()}개 <span class="text-[10px] text-slate-400 font-normal">(${value.sales.toLocaleString()}원)</span></span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden">
+                            <div class="${color.bar} h-full rounded-full transition-all duration-500" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            return;
+        }
+
+        let accumulatedPercent = 0;
+        const segments = sortedStats.map(([, value], index) => {
+            const nextPercent = accumulatedPercent + ((value.count / totalQty) * 100);
+            const color = palette[index % palette.length].hex;
+            const segment = `${color} ${accumulatedPercent.toFixed(2)}% ${nextPercent.toFixed(2)}%`;
+            accumulatedPercent = nextPercent;
+            return segment;
+        });
+
+        chartContainer.innerHTML = `
+            <div class="grid grid-cols-1 sm:grid-cols-[11rem_1fr] items-center gap-6 text-xs">
+                <div class="relative mx-auto w-44 aspect-square rounded-full" style="background: conic-gradient(${segments.join(', ')});">
+                    <div class="absolute inset-7 rounded-full bg-white flex flex-col items-center justify-center text-center shadow-inner">
+                        <span class="text-[10px] font-bold text-slate-400">총 주문 수량</span>
+                        <strong class="text-xl font-black text-slate-900">${totalQty.toLocaleString()}개</strong>
+                    </div>
+                </div>
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    ${sortedStats.map(([name, value], index) => {
+                        const color = palette[index % palette.length].hex;
+                        const percent = ((value.count / totalQty) * 100).toFixed(1);
+
+                        return `
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="flex items-center gap-2 min-w-0 text-slate-700 font-semibold">
+                                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${color}"></span>
+                                    <span class="truncate">${escapeHtml(name)}</span>
+                                </span>
+                                <span class="shrink-0 text-slate-500 font-bold">${value.count.toLocaleString()}개 (${percent}%)</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
     async function renderAdminStatistics() {
         const chartContainer = document.getElementById('stats-chart-container');
         const tableBody = document.getElementById('stats-table-body');
         const summaryQty = document.getElementById('stats-summary-qty');
         const summarySales = document.getElementById('stats-summary-sales');
         const summaryOrders = document.getElementById('stats-summary-orders');
+        const summaryShippingTotal = document.getElementById('stats-summary-shipping-total');
+        const summaryContractShipping = document.getElementById('stats-summary-contract-shipping');
         const currentLabel = document.getElementById('stats-current-label');
 
         chartContainer.innerHTML = `
@@ -2801,19 +2920,20 @@
         }
 
         renderStatsControls(globalOrders);
+        renderStatsChartControls();
 
         const targetOrders = getOrdersForActiveStatsMode(globalOrders);
         const stats = {};
 
-        products.forEach(p => {
-            stats[p.name] = { count: 0, sales: 0 };
+        products.forEach(product => {
+            stats[product.name] = { count: 0, sales: 0 };
         });
 
         let totalQty = 0;
-        let totalSales = 0;
+        let productSales = 0;
 
         targetOrders.forEach(order => {
-            if (!order.cart || !Array.isArray(order.cart)) return;
+            if (!Array.isArray(order.cart)) return;
 
             order.cart.forEach(item => {
                 const cleanName = String(item.optionName || '미분류').split(" (")[0];
@@ -2827,13 +2947,21 @@
                 stats[cleanName].count += quantity;
                 stats[cleanName].sales += lineSales;
                 totalQty += quantity;
-                totalSales += lineSales;
+                productSales += lineSales;
             });
         });
 
+        const orderCount = targetOrders.length;
+        const totalShippingFee = orderCount * CUSTOMER_SHIPPING_FEE;
+        const contractShippingFee = orderCount * CONTRACT_SHIPPING_FEE;
+        const shippingMargin = totalShippingFee - contractShippingFee;
+        const totalSales = productSales + shippingMargin;
+
         if (summaryQty) summaryQty.textContent = `${totalQty.toLocaleString()}개`;
         if (summarySales) summarySales.textContent = `${totalSales.toLocaleString()}원`;
-        if (summaryOrders) summaryOrders.textContent = `${targetOrders.length.toLocaleString()}건 주문`;
+        if (summaryOrders) summaryOrders.textContent = `${orderCount.toLocaleString()}건 주문`;
+        if (summaryShippingTotal) summaryShippingTotal.textContent = `${totalShippingFee.toLocaleString()}원`;
+        if (summaryContractShipping) summaryContractShipping.textContent = `${contractShippingFee.toLocaleString()}원`;
         if (currentLabel) currentLabel.textContent = getCurrentStatsLabel();
 
         if (totalQty === 0) {
@@ -2843,33 +2971,16 @@
         }
 
         const sortedStats = Object.entries(stats)
-            .filter(([, val]) => val.count > 0)
+            .filter(([, value]) => value.count > 0)
             .sort((a, b) => b[1].count - a[1].count);
-        const maxVal = Math.max(...sortedStats.map(s => s[1].count), 1);
 
-        chartContainer.innerHTML = sortedStats.map(([name, val], index) => {
-            const percent = (val.count / maxVal) * 100;
-            const barColors = ['bg-indigo-600', 'bg-violet-500', 'bg-purple-500', 'bg-pink-500', 'bg-emerald-500'];
-            const barColor = barColors[index % barColors.length];
+        renderStatsChart(chartContainer, sortedStats, totalQty);
 
-            return `
-                <div class="space-y-1 text-xs">
-                    <div class="flex justify-between gap-4 font-semibold">
-                        <span class="text-slate-700 truncate">${escapeHtml(name)}</span>
-                        <span class="text-slate-900 font-bold shrink-0">${val.count.toLocaleString()}개 <span class="text-[10px] text-slate-400 font-normal">(${val.sales.toLocaleString()}원)</span></span>
-                    </div>
-                    <div class="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden">
-                        <div class="${barColor} h-full rounded-full transition-all duration-500" style="width: ${percent}%"></div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        tableBody.innerHTML = sortedStats.map(([name, val]) => `
+        tableBody.innerHTML = sortedStats.map(([name, value]) => `
             <tr class="hover:bg-slate-50 transition border-b border-slate-100">
                 <td class="p-3 font-semibold text-slate-800">${escapeHtml(name)}</td>
-                <td class="p-3 text-right font-bold text-slate-900">${val.count.toLocaleString()}개</td>
-                <td class="p-3 text-right font-mono text-indigo-600 font-bold">${val.sales.toLocaleString()}원</td>
+                <td class="p-3 text-right font-bold text-slate-900">${value.count.toLocaleString()}개</td>
+                <td class="p-3 text-right font-mono text-indigo-600 font-bold">${value.sales.toLocaleString()}원</td>
             </tr>
         `).join('');
     }
