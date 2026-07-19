@@ -356,9 +356,12 @@
         </div>
 
         <div id="admin-content-panel" class="hidden space-y-6">
-            <div class="flex border-b border-slate-200 bg-white p-2 rounded-xl shadow-sm gap-2">
+            <div class="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-200 bg-white p-2 rounded-xl shadow-sm gap-2">
                 <button onclick="switchAdminSubTab('orders')" id="subtab-orders" class="flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition">
                     <i class="fa-solid fa-rectangle-list mr-1.5"></i> 주문 관리
+                </button>
+                <button onclick="switchAdminSubTab('completed')" id="subtab-completed" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition">
+                    <i class="fa-solid fa-circle-check mr-1.5"></i> 배송완료
                 </button>
                 <button onclick="switchAdminSubTab('stats')" id="subtab-stats" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition">
                     <i class="fa-solid fa-chart-pie mr-1.5"></i> 통계
@@ -408,6 +411,11 @@
                             <p class="text-xs text-slate-400">실시간 주문 관리 영역입니다.</p>
                         </div>
                         <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+                            <label class="relative block w-full sm:w-64">
+                                <span class="sr-only">이름 또는 연락처로 주문 검색</span>
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                                <input type="search" id="admin-order-search" oninput="filterAdminOrders()" placeholder="이름 또는 연락처 검색" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-xs font-medium text-slate-700 outline-none transition focus:border-indigo-500">
+                            </label>
                             <button type="button" id="order-notification-btn" onclick="enableOrderNotifications()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
                                 <i class="fa-solid fa-bell"></i> 주문 알림 켜기
                             </button>
@@ -432,6 +440,43 @@
                             <tbody id="admin-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
                             <tr>
                                 <td colspan="6" class="p-8 text-center text-slate-400">데이터를 불러오는 중입니다...</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Orders Sub-Tab -->
+            <div id="admin-section-completed" class="space-y-6 hidden">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-base">배송완료 주문</h3>
+                            <p class="text-xs text-slate-400">배송이 완료된 주문을 보관하고 필요할 때 다시 확인합니다.</p>
+                        </div>
+                        <label class="relative block w-full sm:w-72">
+                            <span class="sr-only">이름 또는 연락처로 배송완료 주문 검색</span>
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="search" id="completed-order-search" oninput="filterCompletedOrders()" placeholder="이름 또는 연락처 검색" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-xs font-medium text-slate-700 outline-none transition focus:border-indigo-500">
+                        </label>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                            <tr class="bg-slate-50 text-slate-400 font-bold text-[10px] sm:text-xs uppercase border-b border-slate-100">
+                                <th class="p-4">주문번호 / 일시</th>
+                                <th class="p-4">신청자</th>
+                                <th class="p-4">선택 품목</th>
+                                <th class="p-4">금액</th>
+                                <th class="p-4">배송 주소</th>
+                                <th class="p-4 text-center">상태 / 송장 / 삭제</th>
+                            </tr>
+                            </thead>
+                            <tbody id="completed-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
+                            <tr>
+                                <td colspan="6" class="p-8 text-center text-slate-400">배송완료 주문을 불러오는 중입니다...</td>
                             </tr>
                             </tbody>
                         </table>
@@ -2335,7 +2380,7 @@
 
         if (isDemoMode) {
             globalOrders = [...localOrders];
-            renderAdminOrdersUI(globalOrders);
+            renderAdminOrderViews();
             return;
         }
 
@@ -2348,57 +2393,62 @@
                 globalOrders.push(docSnap.data());
             });
 
-            renderAdminOrdersUI(globalOrders);
+            renderAdminOrderViews();
         } catch (err) {
             console.error("Admin order load failed. Local fallback.", err);
             globalOrders = [...localOrders];
-            renderAdminOrdersUI(globalOrders);
+            renderAdminOrderViews();
         }
     }
 
-    function renderAdminOrdersUI(orders) {
-        const tbody = document.getElementById('admin-table-body');
+    function normalizeOrderSearchValue(value) {
+        return String(value || "").replace(/[^0-9a-zA-Z가-힣]/g, "").toLowerCase();
+    }
 
-        orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    function matchesOrderSearch(order, query) {
+        const normalizedQuery = normalizeOrderSearchValue(query);
 
-        const totalCount = orders.length;
-        const totalSum = orders.reduce((acc, order) => acc + Number(order.finalTotal || 0), 0);
-        const islandCount = orders.filter(order => order.isIslandShipping).length;
-        const pendingCount = orders.filter(order => order.status === "입금대기").length;
+        if (!normalizedQuery) return true;
 
-        document.getElementById('stat-total-orders').textContent = `${totalCount}건`;
-        document.getElementById('stat-total-sales').textContent = `${totalSum.toLocaleString()}원`;
-        document.getElementById('stat-island-count').textContent = `${islandCount}건`;
-        document.getElementById('stat-pending-orders').textContent = `${pendingCount}건`;
+        const searchableValues = [
+            order.ordererName,
+            order.ordererPhone,
+            order.orderId
+        ].map(normalizeOrderSearchValue);
 
+        return searchableValues.some(value => value.includes(normalizedQuery));
+    }
+
+    function buildAdminOrderRows(orders, emptyMessage) {
         if (orders.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">접수된 주문이 없습니다.</td></tr>`;
-            return;
+            return `<tr><td colspan="6" class="p-8 text-center text-slate-400">${emptyMessage}</td></tr>`;
         }
 
-        tbody.innerHTML = orders.map(order => {
-            const cartOverview = order.cart.map(itm => `${itm.optionName} x${itm.quantity}`).join('<br>');
+        return orders.map(order => {
+            const cartOverview = Array.isArray(order.cart)
+                ? order.cart.map(item => `${item.optionName} x${item.quantity}`).join('<br>')
+                : '-';
 
             return `
                 <tr class="hover:bg-slate-50 transition border-b border-slate-100 last:border-0 text-xs">
                     <td class="p-3 text-slate-500 font-mono">
-                        <span class="font-bold text-slate-800 block">${order.orderId}</span>
-                        <span class="text-[10px] block text-slate-400">${order.createdAt}</span>
+                        <span class="font-bold text-slate-800 block">${order.orderId || '-'}</span>
+                        <span class="text-[10px] block text-slate-400">${order.createdAt || '-'}</span>
                     </td>
                     <td class="p-3">
-                        <span class="font-bold text-slate-800 block">${order.ordererName}</span>
-                        <span class="text-[10px] text-indigo-600 block font-semibold">@${order.ordererNickname}</span>
+                        <span class="font-bold text-slate-800 block">${order.ordererName || '-'}</span>
+                        <span class="text-[10px] text-indigo-600 block font-semibold">@${order.ordererNickname || '-'}</span>
                         <span class="text-[10px] text-amber-700 block font-medium">차량: ${order.ordererCarInfo || '미기입'}</span>
-                        <span class="text-[10px] text-slate-400 block">${order.ordererPhone}</span>
+                        <span class="text-[10px] text-slate-400 block">${order.ordererPhone || '-'}</span>
                     </td>
                     <td class="p-3 leading-relaxed text-[11px] font-medium text-slate-600 font-mono">${cartOverview}</td>
                     <td class="p-3">
                         <span class="font-bold text-slate-900 block font-mono">${Number(order.finalTotal || 0).toLocaleString()}원</span>
-                        <span class="text-[10px] text-slate-400 block">입금자: ${order.depositorName}</span>
+                        <span class="text-[10px] text-slate-400 block">입금자: ${order.depositorName || '-'}</span>
                     </td>
                     <td class="p-3 max-w-[200px] truncate leading-normal text-[11px]">
-                        <p class="text-slate-700 truncate font-semibold" title="${order.addressBasic} ${order.addressDetail}">[${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
-                        <p class="text-[10px] text-amber-600 italic truncate" title="${order.shippingMemo}">메모: ${order.shippingMemo}</p>
+                        <p class="text-slate-700 truncate font-semibold" title="${order.addressBasic || ''} ${order.addressDetail || ''}">[${order.postalCode || '-'}] ${order.addressBasic || ''} ${order.addressDetail || ''}</p>
+                        <p class="text-[10px] text-amber-600 italic truncate" title="${order.shippingMemo || ''}">메모: ${order.shippingMemo || '없음'}</p>
                     </td>
                     <td class="p-3 text-center space-y-2 max-w-[170px]">
                         <select onchange="updateOrderStatus('${order.orderId}', this.value)" class="rounded border border-slate-200 px-2 py-1 text-[11px] font-bold focus:border-indigo-500 bg-white">
@@ -2432,12 +2482,73 @@
         }).join('');
     }
 
+    function updateOrderSummaryStats(orders) {
+        const totalCount = orders.length;
+        const totalSum = orders.reduce((acc, order) => acc + Number(order.finalTotal || 0), 0);
+        const islandCount = orders.filter(order => order.isIslandShipping).length;
+        const pendingCount = orders.filter(order => order.status === "입금대기").length;
+
+        document.getElementById('stat-total-orders').textContent = `${totalCount}건`;
+        document.getElementById('stat-total-sales').textContent = `${totalSum.toLocaleString()}원`;
+        document.getElementById('stat-island-count').textContent = `${islandCount}건`;
+        document.getElementById('stat-pending-orders').textContent = `${pendingCount}건`;
+    }
+
+    function renderAdminOrdersUI(orders) {
+        const tbody = document.getElementById('admin-table-body');
+        const allOrders = Array.isArray(orders) ? [...orders] : [];
+        const query = document.getElementById('admin-order-search')?.value || "";
+
+        updateOrderSummaryStats(allOrders);
+
+        const visibleOrders = allOrders
+            .filter(order => order.status !== "배송완료")
+            .filter(order => matchesOrderSearch(order, query))
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        tbody.innerHTML = buildAdminOrderRows(
+            visibleOrders,
+            query ? "검색 조건에 맞는 진행 주문이 없습니다." : "진행 중인 주문이 없습니다."
+        );
+    }
+
+    function renderCompletedOrdersUI(orders) {
+        const tbody = document.getElementById('completed-table-body');
+
+        if (!tbody) return;
+
+        const allOrders = Array.isArray(orders) ? [...orders] : [];
+        const query = document.getElementById('completed-order-search')?.value || "";
+        const visibleOrders = allOrders
+            .filter(order => order.status === "배송완료")
+            .filter(order => matchesOrderSearch(order, query))
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        tbody.innerHTML = buildAdminOrderRows(
+            visibleOrders,
+            query ? "검색 조건에 맞는 배송완료 주문이 없습니다." : "배송완료 주문이 없습니다."
+        );
+    }
+
+    function renderAdminOrderViews() {
+        renderAdminOrdersUI(globalOrders);
+        renderCompletedOrdersUI(globalOrders);
+    }
+
+    window.filterAdminOrders = function() {
+        renderAdminOrdersUI(globalOrders);
+    };
+
+    window.filterCompletedOrders = function() {
+        renderCompletedOrdersUI(globalOrders);
+    };
+
     window.updateOrderStatus = async function(orderId, newStatus) {
         if (isDemoMode) {
             const order = localOrders.find(o => o.orderId === orderId);
             if (order) order.status = newStatus;
 
-            showToast(`✅ 상태가 [${newStatus}]로 변경되었습니다.`);
+            showToast(newStatus === "배송완료" ? "✅ 배송완료 탭으로 주문을 이동했습니다." : `✅ 상태가 [${newStatus}]로 변경되었습니다.`);
             loadAdminOrders();
             return;
         }
@@ -2446,7 +2557,7 @@
             const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
             await updateDoc(orderRef, { status: newStatus });
 
-            showToast(`✅ 상태가 [${newStatus}]로 변경되었습니다.`);
+            showToast(newStatus === "배송완료" ? "✅ 배송완료 탭으로 주문을 이동했습니다." : `✅ 상태가 [${newStatus}]로 변경되었습니다.`);
             loadAdminOrders();
         } catch (err) {
             console.error("Status update failed.", err);
@@ -2515,7 +2626,7 @@
             localOrders = localOrders.filter(order => order.orderId !== orderId);
             globalOrders = globalOrders.filter(order => order.orderId !== orderId);
 
-            renderAdminOrdersUI(globalOrders);
+            renderAdminOrderViews();
             showToast("🗑️ 주문이 삭제되었습니다.");
             return;
         }
@@ -2526,7 +2637,7 @@
 
             globalOrders = globalOrders.filter(order => order.orderId !== orderId);
 
-            renderAdminOrdersUI(globalOrders);
+            renderAdminOrderViews();
             showToast("🗑️ 주문이 삭제되었습니다.");
         } catch (err) {
             console.error("Order delete failed.", err);
@@ -3850,24 +3961,30 @@
         if (!isAdminAuthenticated) return;
 
         const ordersBtn = document.getElementById('subtab-orders');
+        const completedBtn = document.getElementById('subtab-completed');
         const statsBtn = document.getElementById('subtab-stats');
         const productsBtn = document.getElementById('subtab-products');
 
         const ordersSec = document.getElementById('admin-section-orders');
+        const completedSec = document.getElementById('admin-section-completed');
         const statsSec = document.getElementById('admin-section-stats');
         const productsSec = document.getElementById('admin-section-products');
 
-        [ordersBtn, statsBtn, productsBtn].forEach(btn => {
+        [ordersBtn, completedBtn, statsBtn, productsBtn].forEach(btn => {
             btn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 text-center transition";
         });
 
-        [ordersSec, statsSec, productsSec].forEach(sec => {
+        [ordersSec, completedSec, statsSec, productsSec].forEach(sec => {
             sec.classList.add('hidden');
         });
 
         if (subtab === 'orders') {
             ordersBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
             ordersSec.classList.remove('hidden');
+            loadAdminOrders();
+        } else if (subtab === 'completed') {
+            completedBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
+            completedSec.classList.remove('hidden');
             loadAdminOrders();
         } else if (subtab === 'stats') {
             statsBtn.className = "flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition";
