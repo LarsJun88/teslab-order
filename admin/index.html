@@ -573,6 +573,11 @@
                 </div>
 
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                    <div class="flex items-start justify-between gap-4 mb-4"><div><h3 class="font-bold text-slate-900 text-base mb-1">배송 일정 팝업 설정</h3><p class="text-xs text-slate-400">휴가나 제작 지연처럼 일시적인 배송 안내가 첫 화면에 표시됩니다.</p></div><label class="flex shrink-0 items-center gap-2 text-xs font-bold text-slate-700"><input id="admin-shipping-notice-enabled" type="checkbox" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">팝업 표시</label></div>
+                    <div class="space-y-3"><label class="block"><span class="mb-1 block text-xs font-bold text-slate-500">제목</span><input id="admin-shipping-notice-title" type="text" maxlength="80" placeholder="예: 휴가 기간 배송 일정 안내" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-medium outline-none focus:border-amber-500"></label><label class="block"><span class="mb-1 block text-xs font-bold text-slate-500">안내 내용</span><textarea id="admin-shipping-notice-message" rows="4" maxlength="1000" placeholder="예: 8월 1일~8월 5일 주문 건은 8월 6일부터 순차 발송됩니다." class="w-full rounded-xl border border-slate-200 p-3 text-xs font-medium leading-relaxed outline-none focus:border-amber-500"></textarea></label><div class="flex justify-end"><button type="button" onclick="saveShippingNoticeConfig()" class="rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-600"><i class="fa-solid fa-truck-fast mr-1"></i>배송 팝업 저장</button></div></div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                         <div>
                             <h3 class="font-bold text-slate-900 text-base">상품 카탈로그 편집</h3>
@@ -1029,6 +1034,7 @@
     let isAdminAuthenticated = false;
 
     let localNotice = "필독사항: 본 전용 파츠는 맞춤 제작 상품으로, 입금 확인 이후 순차 제작됩니다.";
+    let localShippingNotice = { enabled: false, title: "배송 일정 안내", message: "", version: "0" };
 
     let localProducts = [
         {
@@ -1217,6 +1223,8 @@
 
         const cachedNotice = localStorage.getItem('teslap_notice_cache');
         if (cachedNotice) localNotice = cachedNotice;
+        const cachedShippingNotice = localStorage.getItem('teslap_shipping_notice_cache');
+        if (cachedShippingNotice) localShippingNotice = normalizeShippingNoticeConfig(JSON.parse(cachedShippingNotice));
     } catch (e) {
         products = localProducts;
     }
@@ -1549,6 +1557,7 @@
 
         const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
         const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
+        const shippingNoticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'shippingNotice');
         const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
 
         try {
@@ -1571,6 +1580,15 @@
                 await setDoc(noticeDocRef, { text: localNotice });
             }
             renderNoticeUI(localNotice);
+
+            const shippingNoticeSnap = await getDoc(shippingNoticeDocRef);
+            if (shippingNoticeSnap.exists()) {
+                localShippingNotice = normalizeShippingNoticeConfig(shippingNoticeSnap.data());
+            } else {
+                await setDoc(shippingNoticeDocRef, localShippingNotice);
+            }
+            localStorage.setItem('teslap_shipping_notice_cache', JSON.stringify(localShippingNotice));
+            renderShippingNoticeConfigUI();
 
             const catalogSnap = await getDoc(catalogDocRef);
             if (catalogSnap.exists() && Array.isArray(catalogSnap.data().products)) {
@@ -1596,6 +1614,24 @@
 
         if (display) display.textContent = text;
         if (input) input.value = text;
+    }
+
+    function normalizeShippingNoticeConfig(value) {
+        return {
+            enabled: Boolean(value?.enabled),
+            title: String(value?.title || '배송 일정 안내').trim() || '배송 일정 안내',
+            message: String(value?.message || '').trim(),
+            version: String(value?.version || '0')
+        };
+    }
+
+    function renderShippingNoticeConfigUI() {
+        const enabled = document.getElementById('admin-shipping-notice-enabled');
+        const title = document.getElementById('admin-shipping-notice-title');
+        const message = document.getElementById('admin-shipping-notice-message');
+        if (enabled) enabled.checked = localShippingNotice.enabled;
+        if (title) title.value = localShippingNotice.title;
+        if (message) message.value = localShippingNotice.message;
     }
 
     function renderProductsUI() {
@@ -3773,6 +3809,33 @@
         } catch (err) {
             console.error("Notice save failed.", err);
             showToast("❌ 공지 저장 실패");
+        }
+    };
+
+    window.saveShippingNoticeConfig = async function() {
+        const enabled = document.getElementById('admin-shipping-notice-enabled').checked;
+        const title = document.getElementById('admin-shipping-notice-title').value.trim() || '배송 일정 안내';
+        const message = document.getElementById('admin-shipping-notice-message').value.trim();
+
+        if (enabled && !message) {
+            showToast('❌ 팝업을 표시하려면 안내 내용을 입력해 주세요.');
+            return;
+        }
+
+        const nextNotice = { enabled, title, message, version: String(Date.now()) };
+
+        try {
+            if (!isDemoMode) {
+                const shippingNoticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'shippingNotice');
+                await setDoc(shippingNoticeDocRef, nextNotice);
+            }
+            localShippingNotice = nextNotice;
+            localStorage.setItem('teslap_shipping_notice_cache', JSON.stringify(localShippingNotice));
+            renderShippingNoticeConfigUI();
+            showToast(enabled ? '✅ 배송 일정 팝업을 표시합니다.' : '✅ 배송 일정 팝업을 숨겼습니다.');
+        } catch (err) {
+            console.error('Shipping notice save failed.', err);
+            showToast('❌ 배송 일정 팝업 저장에 실패했습니다.');
         }
     };
 

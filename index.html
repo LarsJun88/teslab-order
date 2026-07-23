@@ -85,6 +85,15 @@
 
 <div id="toast-container" class="fixed top-32 sm:top-24 lg:top-28 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4"></div>
 
+<div id="shipping-notice-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+    <div class="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div class="bg-amber-500 p-5 text-white"><div class="flex items-start justify-between gap-4"><div class="flex items-center gap-3"><i class="fa-solid fa-truck-fast text-xl"></i><h2 id="shipping-notice-title" class="text-base font-black">배송 일정 안내</h2></div><button type="button" onclick="closeShippingNoticePopup()" class="rounded-lg p-1 text-white/80 hover:bg-white/15 hover:text-white" title="닫기"><i class="fa-solid fa-xmark"></i></button></div></div>
+        <div class="p-5"><p id="shipping-notice-message" class="whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-700"></p></div>
+        <div class="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 p-4"><label class="flex items-center gap-2 text-xs font-semibold text-slate-500"><input id="shipping-notice-dismiss-today" type="checkbox" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">오늘 하루 보지 않기</label><button type="button" onclick="closeShippingNoticePopup()" class="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800">확인</button></div>
+    </div>
+</div>
+
+
 <main class="flex-grow max-w-5xl w-full mx-auto px-4 py-6">
 
     <!-- VIEW 1: ORDER FORM -->
@@ -604,6 +613,7 @@
     let globalOrders = [];
 
     let localNotice = "필독사항: 본 전용 파츠는 맞춤 제작 상품으로, 입금 확인 이후 순차 제작됩니다.";
+    let localShippingNotice = { enabled: false, title: "배송 일정 안내", message: "", version: "0" };
 
     let localProducts = [
         {
@@ -925,12 +935,15 @@
 
         const cachedNotice = localStorage.getItem('teslap_notice_cache');
         if (cachedNotice) localNotice = cachedNotice;
+        const cachedShippingNotice = localStorage.getItem('teslap_shipping_notice_cache');
+        if (cachedShippingNotice) localShippingNotice = normalizeShippingNoticeConfig(JSON.parse(cachedShippingNotice));
     } catch (e) {
         products = localProducts;
     }
 
     window.addEventListener('DOMContentLoaded', () => {
         renderNoticeUI(localNotice);
+        renderShippingNoticePopup();
         renderProductsUI();
         calculateCartTotals();
         runAuth();
@@ -1124,28 +1137,73 @@
 
         const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
         const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
+        const shippingNoticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'shippingNotice');
 
         try {
-            const [noticeSnap, catalogSnap] = await Promise.all([
-                getDoc(noticeDocRef),
-                getDoc(catalogDocRef)
-            ]);
+            const snapshots = await Promise.all([getDoc(noticeDocRef), getDoc(catalogDocRef), getDoc(shippingNoticeDocRef)]);
+            const noticeSnap = snapshots[0];
+            const catalogSnap = snapshots[1];
+            const shippingNoticeSnap = snapshots[2];
 
             if (noticeSnap.exists()) {
                 localNotice = noticeSnap.data().text || localNotice;
                 localStorage.setItem('teslap_notice_cache', localNotice);
             }
-
+            if (shippingNoticeSnap.exists()) {
+                localShippingNotice = normalizeShippingNoticeConfig(shippingNoticeSnap.data());
+                localStorage.setItem('teslap_shipping_notice_cache', JSON.stringify(localShippingNotice));
+            }
             if (catalogSnap.exists()) {
                 applyCatalogProducts(catalogSnap.data().products || []);
             }
 
             renderNoticeUI(localNotice);
+            renderShippingNoticePopup();
             startCatalogSync(catalogDocRef);
         } catch (err) {
             console.error("Firestore catalog load failure. Using cache.", err);
         }
     }
+
+    function normalizeShippingNoticeConfig(value) {
+        return {
+            enabled: Boolean(value?.enabled),
+            title: String(value?.title || '배송 일정 안내').trim() || '배송 일정 안내',
+            message: String(value?.message || '').trim(),
+            version: String(value?.version || '0')
+        };
+    }
+
+    function getShippingNoticeDismissKey() {
+        return 'teslap_shipping_notice_dismissed_' + localShippingNotice.version;
+    }
+
+    function renderShippingNoticePopup() {
+        const modal = document.getElementById('shipping-notice-modal');
+        if (!modal) return;
+
+        const dismissedUntil = Number(localStorage.getItem(getShippingNoticeDismissKey()) || 0);
+        const shouldShow = localShippingNotice.enabled && localShippingNotice.message && dismissedUntil <= Date.now();
+        modal.classList.toggle('hidden', !shouldShow);
+        modal.classList.toggle('flex', shouldShow);
+        if (!shouldShow) return;
+
+        document.getElementById('shipping-notice-title').textContent = localShippingNotice.title;
+        document.getElementById('shipping-notice-message').textContent = localShippingNotice.message;
+        document.getElementById('shipping-notice-dismiss-today').checked = false;
+    }
+
+    window.closeShippingNoticePopup = function() {
+        const modal = document.getElementById('shipping-notice-modal');
+        const dismissToday = document.getElementById('shipping-notice-dismiss-today');
+        if (dismissToday?.checked) {
+            const tomorrow = new Date();
+            tomorrow.setHours(24, 0, 0, 0);
+            localStorage.setItem(getShippingNoticeDismissKey(), String(tomorrow.getTime()));
+        }
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+    };
 
     function renderNoticeUI(text) {
         const display = document.getElementById('notice-text-display');
