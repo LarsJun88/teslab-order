@@ -8,7 +8,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const sharp = require("sharp");
-const { randomUUID } = require("crypto");
+const { randomUUID, createHash } = require("crypto");
 
 const TELEGRAM_BOT_TOKEN = defineSecret("TELEGRAM_BOT_TOKEN");
 const TELEGRAM_CHAT_ID = defineSecret("TELEGRAM_CHAT_ID");
@@ -21,6 +21,7 @@ const THUMBNAIL_IMAGE_MAX_WIDTH = 320;
 const THUMBNAIL_IMAGE_MAX_HEIGHT = 240;
 const THUMBNAIL_IMAGE_QUALITY = 58;
 const THUMBNAIL_OPTIMIZATION_VERSION = 2;
+const VISITOR_ANALYTICS_MAX_DAYS = 90;
 
 initializeApp();
 
@@ -61,6 +62,18 @@ function normalizeLookupName(value) {
 
 function buildOrderLookupKey(name, phone) {
   return normalizeLookupName(name) + "_" + normalizePhoneDigits(phone);
+}
+
+function getKstDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return [values.year, values.month, values.day].join("-");
+}
+
+function hashVisitorUid(uid) {
+  return createHash("sha256").update(String(uid)).digest("hex");
 }
 
 function buildTelegramMessage(order) {
@@ -248,6 +261,84 @@ function validateOrderForInventory(order) {
   }
 }
 
+exports.recordVisit = onCall(
+  { region: "asia-northeast3", invoker: "public" },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Sign in is required to record a visit.");
+
+    const db = getFirestore();
+    const dateKey = getKstDateKey();
+    const visitorHash = hashVisitorUid(request.auth.uid);
+    const now = new Date().toISOString();
+    const summaryRef = db.doc("artifacts/" + APP_ID + "/private/analytics");
+    const dailyRef = db.doc("artifacts/" + APP_ID + "/private/analytics/daily/" + dateKey);
+    const allTimeVisitorRef = db.doc("artifacts/" + APP_ID + "/private/analytics/visitors/" + visitorHash);
+    const dailyVisitorRef = db.doc("artifacts/" + APP_ID + "/private/analytics/daily/" + dateKey + "/visitors/" + visitorHash);
+
+    return db.runTransaction(async (transaction) => {
+      const snapshots = await Promise.all([
+        transaction.get(summaryRef), transaction.get(dailyRef),
+        transaction.get(allTimeVisitorRef), transaction.get(dailyVisitorRef)
+      ]);
+      const summarySnap = snapshots[0];
+      const dailySnap = snapshots[1];
+      const allTimeVisitorSnap = snapshots[2];
+      const dailyVisitorSnap = snapshots[3];
+
+      if (!dailyVisitorSnap.exists) {
+        transaction.set(dailyVisitorRef, { firstSeenAt: now });
+        transaction.set(dailyRef, {
+          date: dateKey,
+          visitors: FieldValue.increment(1),
+          firstRecordedAt: dailySnap.exists ? dailySnap.data().firstRecordedAt || now : now,
+          lastRecordedAt: now
+        }, { merge: true });
+      }
+
+      const summaryUpdate = { lastRecordedAt: now, lastRecordedDate: dateKey };
+      if (!summarySnap.exists) {
+        summaryUpdate.totalVisitors = 0;
+        summaryUpdate.firstRecordedAt = now;
+        summaryUpdate.firstRecordedDate = dateKey;
+      }
+      if (!allTimeVisitorSnap.exists) {
+        transaction.set(allTimeVisitorRef, { firstSeenAt: now });
+        summaryUpdate.totalVisitors = FieldValue.increment(1);
+      }
+
+      transaction.set(summaryRef, summaryUpdate, { merge: true });
+      return { date: dateKey, countedToday: !dailyVisitorSnap.exists, countedTotal: !allTimeVisitorSnap.exists };
+    });
+  }
+);
+
+exports.getVisitorAnalytics = onCall(
+  { region: "asia-northeast3", invoker: "public" },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Sign in is required to view visitor analytics.");
+
+    const requestedDays = Math.floor(Number(request.data?.days || 30));
+    const days = Number.isFinite(requestedDays) ? Math.max(7, Math.min(VISITOR_ANALYTICS_MAX_DAYS, requestedDays)) : 30;
+    const db = getFirestore();
+    const summaryRef = db.doc("artifacts/" + APP_ID + "/private/analytics");
+    const dailyRef = db.collection("artifacts/" + APP_ID + "/private/analytics/daily");
+    const snapshots = await Promise.all([summaryRef.get(), dailyRef.orderBy("date", "desc").limit(days).get()]);
+    const summary = snapshots[0].exists ? snapshots[0].data() || {} : {};
+    const daily = snapshots[1].docs.map((entry) => {
+      const data = entry.data() || {};
+      return { date: String(data.date || entry.id), visitors: Math.max(0, Number(data.visitors || 0)) };
+    }).sort((left, right) => left.date.localeCompare(right.date));
+    const today = getKstDateKey();
+    const todayEntry = daily.find((entry) => entry.date === today);
+
+    return {
+      totalVisitors: Math.max(0, Number(summary.totalVisitors || 0)),
+      todayVisitors: todayEntry ? todayEntry.visitors : 0,
+      firstRecordedDate: String(summary.firstRecordedDate || ""),
+      daily
+    };
+  }
+);
 exports.submitOrderWithInventory = onCall(
   { region: "asia-northeast3", invoker: "public" },
   async (request) => {

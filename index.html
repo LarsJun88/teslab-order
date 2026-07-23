@@ -677,6 +677,7 @@
     let db = null;
     let cloudFunctions = null;
     let submitOrderWithInventoryCall = null;
+    let recordVisitCall = null;
     let isDemoMode = false;
     let currentUser = null;
 
@@ -995,6 +996,7 @@
         db = getFirestore(app);
         cloudFunctions = getFunctions(app, "asia-northeast3");
         submitOrderWithInventoryCall = httpsCallable(cloudFunctions, "submitOrderWithInventory");
+        recordVisitCall = httpsCallable(cloudFunctions, "recordVisit");
     } catch (err) {
         console.warn("Firebase init failed. Demo mode active.", err);
         isDemoMode = true;
@@ -1043,6 +1045,7 @@
 
             currentUser = userCredential.user;
             await initCatalogAndNotice();
+            void recordSiteVisit();
         } catch (err) {
             console.error("Firebase auth failed completely. Demo mode active.", err);
             isDemoMode = true;
@@ -1052,6 +1055,27 @@
         }
     }
 
+
+    function getKstClientDateKey() {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
+        }).formatToParts(new Date());
+        const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return [values.year, values.month, values.day].join("-");
+    }
+
+    async function recordSiteVisit() {
+        if (isDemoMode || !recordVisitCall) return;
+        const sessionKey = "teslap_visit_recorded";
+        const todayKey = getKstClientDateKey();
+        try { if (sessionStorage.getItem(sessionKey) === todayKey) return; } catch (error) {}
+        try {
+            await recordVisitCall();
+            try { sessionStorage.setItem(sessionKey, todayKey); } catch (error) {}
+        } catch (error) {
+            console.warn("Visit analytics recording failed.", error);
+        }
+    }
 
     function updateThemeToggle() {
         const toggle = document.getElementById('theme-toggle');

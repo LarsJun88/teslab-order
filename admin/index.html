@@ -611,6 +611,26 @@
                         </div>
                     </div>
 
+                    <div class="mt-8 border-t border-slate-100 pt-6">
+                        <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <h4 class="flex items-center gap-2 text-sm font-extrabold text-slate-900"><i class="fa-solid fa-chart-line text-violet-500"></i>방문자 통계</h4>
+                                <p class="text-xs text-slate-400">구매 페이지 기준 · 최근 30일 방문 추이</p>
+                            </div>
+                            <span id="visitor-stats-started-at" class="text-[10px] font-semibold text-slate-400">집계 준비 중</span>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div class="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+                                <span class="block text-[10px] font-bold uppercase text-indigo-600">오늘 방문자</span>
+                                <strong id="visitor-stats-today" class="mt-1 block text-2xl font-black text-indigo-900">-</strong>
+                            </div>
+                            <div class="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                                <span class="block text-[10px] font-bold uppercase text-emerald-600">누적 방문자</span>
+                                <strong id="visitor-stats-total" class="mt-1 block text-2xl font-black text-emerald-900">-</strong>
+                            </div>
+                        </div>
+                        <div id="visitor-trend-container" class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4"></div>
+                    </div>
                     <div id="stats-chart-container" class="space-y-4 max-w-xl mx-auto py-4"></div>
                     <div class="mt-8 overflow-x-auto">
                         <h4 class="font-bold text-slate-800 text-xs mb-3 uppercase tracking-wider">상세 집계</h4>
@@ -1097,6 +1117,8 @@
     let updateOrderWithInventoryCall = null;
     let optimizeProductDetailImagesCall = null;
     let optimizeProductThumbnailsCall = null;
+    let getVisitorAnalyticsCall = null;
+    let visitorAnalyticsRequest = null;
     let isDemoMode = false;
     let currentUser = null;
 
@@ -1283,6 +1305,7 @@
         updateOrderWithInventoryCall = httpsCallable(cloudFunctions, "updateOrderWithInventory");
         optimizeProductDetailImagesCall = httpsCallable(cloudFunctions, "optimizeProductDetailImages");
         optimizeProductThumbnailsCall = httpsCallable(cloudFunctions, "optimizeProductThumbnails");
+        getVisitorAnalyticsCall = httpsCallable(cloudFunctions, "getVisitorAnalytics");
     } catch (err) {
         console.warn("Firebase init failed. Demo mode active.", err);
         isDemoMode = true;
@@ -3382,6 +3405,84 @@
         `;
     }
 
+    function getLocalDateKey(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return [year, month, day].join("-");
+    }
+
+    function renderVisitorAnalytics(analytics, errorMessage = "") {
+        const todayEl = document.getElementById("visitor-stats-today");
+        const totalEl = document.getElementById("visitor-stats-total");
+        const startedAtEl = document.getElementById("visitor-stats-started-at");
+        const trendContainer = document.getElementById("visitor-trend-container");
+        if (!todayEl || !totalEl || !startedAtEl || !trendContainer) return;
+
+        if (!analytics) {
+            todayEl.textContent = "-";
+            totalEl.textContent = "-";
+            startedAtEl.textContent = "집계 정보를 불러올 수 없습니다";
+            trendContainer.innerHTML = `<div class="py-4 text-center text-xs text-rose-500">${escapeHtml(errorMessage || "방문자 통계를 불러오지 못했습니다.")}</div>`;
+            return;
+        }
+
+        todayEl.textContent = `${Number(analytics.todayVisitors || 0).toLocaleString()}명`;
+        totalEl.textContent = `${Number(analytics.totalVisitors || 0).toLocaleString()}명`;
+        startedAtEl.textContent = analytics.firstRecordedDate ? `집계 시작 ${analytics.firstRecordedDate}` : "첫 방문부터 집계";
+
+        const dailyMap = new Map((Array.isArray(analytics.daily) ? analytics.daily : []).map((entry) => [entry.date, Number(entry.visitors || 0)]));
+        const points = Array.from({ length: 30 }, (_, index) => {
+            const date = new Date();
+            date.setHours(12, 0, 0, 0);
+            date.setDate(date.getDate() - (29 - index));
+            const key = getLocalDateKey(date);
+            return { key, label: key.slice(5), visitors: dailyMap.get(key) || 0 };
+        });
+        const maxVisitors = Math.max(...points.map((point) => point.visitors), 1);
+
+        trendContainer.innerHTML = `
+            <div class="flex items-center justify-between gap-3">
+                <span class="text-xs font-bold text-slate-700">최근 30일 일별 방문자</span>
+                <span class="text-[10px] font-semibold text-slate-400">막대에 마우스를 올리면 일자별 수치를 볼 수 있습니다.</span>
+            </div>
+            <div class="mt-4 grid h-28 grid-cols-10 items-end gap-1 sm:grid-cols-[repeat(15,minmax(0,1fr))]">
+                ${points.map((point) => {
+                    const height = Math.max(4, Math.round((point.visitors / maxVisitors) * 100));
+                    return `<div class="group relative flex h-full items-end" title="${escapeHtml(point.key)}: ${point.visitors.toLocaleString()}명"><div class="w-full rounded-t bg-violet-500 transition group-hover:bg-violet-700" style="height:${height}%"></div></div>`;
+                }).join("")}
+            </div>
+            <div class="mt-2 flex justify-between text-[10px] font-semibold text-slate-400"><span>${points[0].label}</span><span>${points[points.length - 1].label}</span></div>
+        `;
+    }
+
+    async function loadVisitorAnalytics() {
+        if (visitorAnalyticsRequest) return visitorAnalyticsRequest;
+        const trendContainer = document.getElementById("visitor-trend-container");
+        if (trendContainer) trendContainer.innerHTML = `<div class="py-4 text-center text-xs text-slate-400"><i class="fa-solid fa-spinner mr-1 animate-spin text-violet-500"></i>방문자 통계를 불러오는 중입니다...</div>`;
+
+        if (isDemoMode || !getVisitorAnalyticsCall) {
+            renderVisitorAnalytics(null, "Firebase 연결 후 방문자 통계를 사용할 수 있습니다.");
+            return null;
+        }
+
+        visitorAnalyticsRequest = getVisitorAnalyticsCall({ days: 30 })
+            .then((result) => {
+                renderVisitorAnalytics(result.data || {});
+                return result.data || {};
+            })
+            .catch((error) => {
+                console.warn("Visitor analytics load failed.", error);
+                renderVisitorAnalytics(null, "방문자 통계를 불러오지 못했습니다.");
+                return null;
+            })
+            .finally(() => {
+                visitorAnalyticsRequest = null;
+            });
+
+        return visitorAnalyticsRequest;
+    }
+
     async function renderAdminStatistics() {
         const chartContainer = document.getElementById('stats-chart-container');
         const tableBody = document.getElementById('stats-table-body');
@@ -3391,6 +3492,8 @@
         const summaryShippingTotal = document.getElementById('stats-summary-shipping-total');
         const summaryContractShipping = document.getElementById('stats-summary-contract-shipping');
         const currentLabel = document.getElementById('stats-current-label');
+
+        void loadVisitorAnalytics();
 
         chartContainer.innerHTML = `
             <div class="text-center py-6 text-slate-400">
