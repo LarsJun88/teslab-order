@@ -197,6 +197,28 @@ function isProductManuallySoldOut(product) {
     /\(\s*품절\s*\)/.test(String(product?.itemNo || ""));
 }
 
+function isOptionManuallySoldOut(option) {
+  return /\(\s*품절\s*\)/.test(String(option || ""));
+}
+
+function parseOptionExtraCost(option) {
+  const match = String(option || "").match(/\(([+-])\s*([\d,]+)원\)/);
+  if (!match) return 0;
+  const amount = Number(match[2].replace(/,/g, ""));
+  return match[1] === "-" ? -amount : amount;
+}
+
+function normalizeOptionLabel(option) {
+  return String(option || "").replace(/\s*\([+-]\s*[\d,]+원\)\s*$/, "").trim();
+}
+
+function normalizeEditableText(value, fieldName, required = false) {
+  const normalized = String(value ?? "").trim();
+  if (required && !normalized) throw new HttpsError("invalid-argument", fieldName + "을(를) 입력해 주세요.");
+  if (normalized.length > 500) throw new HttpsError("invalid-argument", fieldName + "이(가) 너무 깁니다.");
+  return normalized;
+}
+
 function validateOrderForInventory(order) {
   if (!order || typeof order !== "object") {
     throw new HttpsError("invalid-argument", "주문 정보가 없습니다.");
@@ -316,6 +338,108 @@ exports.submitOrderWithInventory = onCall(
             .map((product) => [product.id, getProductStock(product)])
         )
       };
+    });
+  }
+);
+
+exports.updateOrderWithInventory = onCall(
+  { region: "asia-northeast3", invoker: "public" },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "로그인 연결 후 주문을 수정할 수 있습니다.");
+
+    const orderId = String(request.data?.orderId || "").trim();
+    const draftCart = request.data?.cart;
+    const details = request.data?.details;
+    if (!/^ORD-\d{6}-\d{4}$/.test(orderId)) throw new HttpsError("invalid-argument", "주문번호 형식이 올바르지 않습니다.");
+    if (!Array.isArray(draftCart) || draftCart.length === 0 || draftCart.length > 100) throw new HttpsError("invalid-argument", "최소 한 개 이상의 주문 품목이 필요합니다.");
+    if (!details || typeof details !== "object") throw new HttpsError("invalid-argument", "수정할 주문 정보가 없습니다.");
+
+    const normalizedDetails = {
+      ordererName: normalizeEditableText(details.ordererName, "주문자 이름", true),
+      ordererPhone: normalizeEditableText(details.ordererPhone, "주문자 연락처", true),
+      ordererNickname: normalizeEditableText(details.ordererNickname, "카페 닉네임", true),
+      ordererCarInfo: normalizeEditableText(details.ordererCarInfo, "차량 정보", true),
+      shipName: normalizeEditableText(details.shipName, "수령인 이름", true),
+      shipPhone: normalizeEditableText(details.shipPhone, "수령인 연락처", true),
+      postalCode: normalizeEditableText(details.postalCode, "우편번호", true),
+      addressBasic: normalizeEditableText(details.addressBasic, "기본 주소", true),
+      addressDetail: normalizeEditableText(details.addressDetail, "상세 주소", true),
+      shippingMemo: normalizeEditableText(details.shippingMemo, "배송 메모") || "없음",
+      depositorName: normalizeEditableText(details.depositorName, "입금자 이름", true),
+      isIslandShipping: Boolean(details.isIslandShipping)
+    };
+    if (normalizePhoneDigits(normalizedDetails.ordererPhone).length < 7 || normalizePhoneDigits(normalizedDetails.shipPhone).length < 7) throw new HttpsError("invalid-argument", "연락처를 다시 확인해 주세요.");
+
+    const db = getFirestore();
+    const catalogRef = db.doc("artifacts/" + APP_ID + "/public/data/config/catalog");
+    const orderRef = db.doc("artifacts/" + APP_ID + "/public/data/orders/" + orderId);
+
+    return db.runTransaction(async (transaction) => {
+      const snapshots = await Promise.all([transaction.get(catalogRef), transaction.get(orderRef)]);
+      const catalogSnap = snapshots[0];
+      const orderSnap = snapshots[1];
+      if (!catalogSnap.exists || !orderSnap.exists) throw new HttpsError("not-found", "주문 또는 상품 정보를 찾을 수 없습니다.");
+
+      const catalogProducts = Array.isArray(catalogSnap.data()?.products) ? catalogSnap.data().products : [];
+      const storedOrder = orderSnap.data() || {};
+      const originalCart = Array.isArray(storedOrder.cart) ? storedOrder.cart : [];
+      const usedSourceIndexes = new Set();
+      const nextCart = [];
+
+      for (const draftItem of draftCart) {
+        const productId = String(draftItem?.productId || "").trim();
+        const quantity = Number(draftItem?.quantity);
+        const sourceIndex = draftItem?.sourceIndex;
+        if (!productId || !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_PRODUCT_STOCK) throw new HttpsError("invalid-argument", "주문 품목 또는 수량이 올바르지 않습니다.");
+
+        if (Number.isInteger(sourceIndex)) {
+          const originalItem = originalCart[sourceIndex];
+          if (!originalItem || usedSourceIndexes.has(sourceIndex) || String(originalItem.productId) !== productId) throw new HttpsError("failed-precondition", "기존 주문 품목이 변경되었습니다. 주문 목록을 다시 확인해 주세요.");
+          usedSourceIndexes.add(sourceIndex);
+          nextCart.push({ productId, optionName: String(originalItem.optionName || "품목"), unitPrice: Number(originalItem.unitPrice || 0), quantity });
+          continue;
+        }
+
+        const product = catalogProducts.find((item) => item.id === productId);
+        const optionValue = String(draftItem?.optionValue || "").trim();
+        const options = Array.isArray(product?.options) && product.options.length > 0 ? product.options : ["기본형"];
+        if (!product || isProductManuallySoldOut(product) || !options.includes(optionValue) || isOptionManuallySoldOut(optionValue)) throw new HttpsError("failed-precondition", "추가할 수 없는 품목 또는 옵션입니다.");
+        nextCart.push({ productId, optionName: String(product.name) + " (" + normalizeOptionLabel(optionValue) + ")", unitPrice: Number(product.price || 0) + parseOptionExtraCost(optionValue), quantity });
+      }
+
+      const originalByProduct = new Map();
+      const nextByProduct = new Map();
+      originalCart.forEach((item) => originalByProduct.set(String(item?.productId || ""), (originalByProduct.get(String(item?.productId || "")) || 0) + Number(item?.quantity || 0)));
+      nextCart.forEach((item) => nextByProduct.set(item.productId, (nextByProduct.get(item.productId) || 0) + item.quantity));
+      const deltaByProduct = new Map();
+      new Set([...originalByProduct.keys(), ...nextByProduct.keys()]).forEach((productId) => deltaByProduct.set(productId, (nextByProduct.get(productId) || 0) - (originalByProduct.get(productId) || 0)));
+
+      for (const [productId, delta] of deltaByProduct) {
+        if (delta <= 0) continue;
+        const product = catalogProducts.find((item) => item.id === productId);
+        const availableStock = product ? getProductStock(product) : 0;
+        if (!product || isProductManuallySoldOut(product) || availableStock < delta) throw new HttpsError("failed-precondition", "재고가 부족하여 주문을 수정할 수 없습니다.", { reason: "insufficient-stock", productId, productName: product?.name || "판매 종료 상품", availableStock, requestedQuantity: delta });
+      }
+
+      const updatedProducts = catalogProducts.map((product) => {
+        const delta = deltaByProduct.get(product.id) || 0;
+        return delta === 0 ? product : { ...product, stock: Math.max(0, Math.min(MAX_PRODUCT_STOCK, getProductStock(product) - delta)) };
+      });
+      const productTotal = nextCart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const shippingFee = 4000 + (normalizedDetails.isIslandShipping ? 3000 : 0);
+      const publicOrderUpdate = {
+        ...normalizedDetails,
+        cart: nextCart,
+        productTotal,
+        shippingFee,
+        finalTotal: productTotal + shippingFee,
+        ordererNameNormalized: normalizeLookupName(normalizedDetails.ordererName),
+        ordererPhoneDigits: normalizePhoneDigits(normalizedDetails.ordererPhone),
+        orderLookupKey: buildOrderLookupKey(normalizedDetails.ordererName, normalizedDetails.ordererPhone)
+      };
+      if (Array.from(deltaByProduct.values()).some((delta) => delta !== 0)) transaction.update(catalogRef, { products: updatedProducts });
+      transaction.update(orderRef, { ...publicOrderUpdate, adminUpdatedAt: FieldValue.serverTimestamp(), adminUpdatedBy: request.auth.uid });
+      return { orderId, order: publicOrderUpdate, remainingStock: Object.fromEntries(updatedProducts.filter((product) => deltaByProduct.has(product.id)).map((product) => [product.id, getProductStock(product)])) };
     });
   }
 );

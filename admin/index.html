@@ -434,7 +434,7 @@
                                 <th class="p-4">선택 품목</th>
                                 <th class="p-4">금액</th>
                                 <th class="p-4">배송 주소</th>
-                                <th class="p-4 text-center">상태 / 복사 / 송장 / 삭제</th>
+                                <th class="p-4 text-center">상태 / 복사 / 송장 / 수정 / 삭제</th>
                             </tr>
                             </thead>
                             <tbody id="admin-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
@@ -471,7 +471,7 @@
                                 <th class="p-4">선택 품목</th>
                                 <th class="p-4">금액</th>
                                 <th class="p-4">배송 주소</th>
-                                <th class="p-4 text-center">상태 / 복사 / 송장 / 삭제</th>
+                                <th class="p-4 text-center">상태 / 복사 / 송장 / 수정 / 삭제</th>
                             </tr>
                             </thead>
                             <tbody id="completed-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
@@ -803,6 +803,53 @@
     </div>
 </div>
 
+
+<!-- Admin Order Edit Modal -->
+<div id="admin-order-edit-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div class="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-bold text-slate-800 text-sm">주문 정보 수정</h3>
+                <p id="admin-order-edit-id" class="text-[10px] text-slate-400 font-mono mt-0.5">-</p>
+            </div>
+            <button type="button" onclick="closeAdminOrderEditModal()" class="p-2 rounded-lg hover:bg-slate-200 transition text-slate-400" title="닫기">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div class="p-5 space-y-6 overflow-y-auto text-xs">
+            <section class="space-y-3">
+                <h4 class="font-extrabold text-slate-800">주문자 및 수령인 정보</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label class="block"><span class="block font-bold text-slate-500 mb-1">주문자 이름</span><input id="admin-edit-orderer-name" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                    <label class="block"><span class="block font-bold text-slate-500 mb-1">주문자 연락처</span><input id="admin-edit-orderer-phone" type="tel" oninput="formatPhoneNumber(this)" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                    <label class="block"><span class="block font-bold text-slate-500 mb-1">카페 닉네임</span><input id="admin-edit-orderer-nickname" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                    <label class="block"><span class="block font-bold text-slate-500 mb-1">차량 정보</span><input id="admin-edit-orderer-car" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                    <label class="block"><span class="block font-bold text-slate-500 mb-1">수령인 이름</span><input id="admin-edit-ship-name" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                    <label class="block"><span class="block font-bold text-slate-500 mb-1">수령인 연락처</span><input id="admin-edit-ship-phone" type="tel" oninput="formatPhoneNumber(this)" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                    <label class="block sm:col-span-2"><span class="block font-bold text-slate-500 mb-1">입금자 이름</span><input id="admin-edit-depositor-name" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                </div>
+            </section>
+
+            <section class="space-y-3 border-t border-slate-100 pt-5">
+                <div class="flex items-center justify-between gap-3"><h4 class="font-extrabold text-slate-800">배송 정보</h4><label class="flex items-center gap-2 text-[11px] font-bold text-amber-700"><input id="admin-edit-island" type="checkbox" onchange="renderAdminOrderEditTotals()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">도서산간 +3,000원</label></div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3"><label class="block"><span class="block font-bold text-slate-500 mb-1">우편번호</span><input id="admin-edit-postal-code" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label><label class="block sm:col-span-2"><span class="block font-bold text-slate-500 mb-1">기본 주소</span><input id="admin-edit-address-basic" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label></div>
+                <label class="block"><span class="block font-bold text-slate-500 mb-1">상세 주소</span><input id="admin-edit-address-detail" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+                <label class="block"><span class="block font-bold text-slate-500 mb-1">배송 메모</span><input id="admin-edit-shipping-memo" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500"></label>
+            </section>
+
+            <section class="space-y-3 border-t border-slate-100 pt-5">
+                <div class="flex items-center justify-between"><h4 class="font-extrabold text-slate-800">주문 품목</h4><button type="button" onclick="addAdminOrderEditItem()" class="rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-indigo-700 transition"><i class="fa-solid fa-plus mr-1"></i>품목 추가</button></div>
+                <p class="text-[10px] text-slate-400">기존 품목은 당시 단가가 유지됩니다. 다른 품목으로 바꾸려면 기존 품목을 삭제한 뒤 새 품목을 추가해 주세요.</p>
+                <div id="admin-order-edit-cart" class="space-y-2"></div>
+                <div class="grid grid-cols-3 gap-3 rounded-xl bg-slate-50 border border-slate-100 p-3 text-right"><div><span class="block text-[10px] font-bold text-slate-400">상품금액</span><strong id="admin-edit-product-total" class="text-sm text-slate-800">0원</strong></div><div><span class="block text-[10px] font-bold text-slate-400">배송비</span><strong id="admin-edit-shipping-fee" class="text-sm text-slate-800">0원</strong></div><div><span class="block text-[10px] font-bold text-indigo-500">최종금액</span><strong id="admin-edit-final-total" class="text-base text-indigo-700">0원</strong></div></div>
+            </section>
+        </div>
+
+        <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 text-xs shrink-0"><button type="button" onclick="closeAdminOrderEditModal()" class="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 transition">취소</button><button type="button" id="admin-order-edit-save" onclick="saveAdminOrderEdit()" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition"><i class="fa-solid fa-floppy-disk mr-1"></i>주문 저장</button></div>
+    </div>
+</div>
+
 <!-- Order Success Receipt Modal -->
 <div id="success-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
@@ -971,6 +1018,7 @@
     let storage = null;
     let cloudFunctions = null;
     let submitOrderWithInventoryCall = null;
+    let updateOrderWithInventoryCall = null;
     let optimizeProductDetailImagesCall = null;
     let optimizeProductThumbnailsCall = null;
     let isDemoMode = false;
@@ -1142,6 +1190,9 @@
     let activeStatsMode = "all";
     let activeStatsPeriod = "";
     let activeStatsChart = "bar";
+    let editingAdminOrder = null;
+    let adminOrderEditCart = [];
+    let isSavingAdminOrder = false;
     const CUSTOMER_SHIPPING_FEE = 4000;
     const CONTRACT_SHIPPING_FEE = 2800;
 
@@ -1152,6 +1203,7 @@
         storage = getStorage(app);
         cloudFunctions = getFunctions(app, "asia-northeast3");
         submitOrderWithInventoryCall = httpsCallable(cloudFunctions, "submitOrderWithInventory");
+        updateOrderWithInventoryCall = httpsCallable(cloudFunctions, "updateOrderWithInventory");
         optimizeProductDetailImagesCall = httpsCallable(cloudFunctions, "optimizeProductDetailImages");
         optimizeProductThumbnailsCall = httpsCallable(cloudFunctions, "optimizeProductThumbnails");
     } catch (err) {
@@ -2500,9 +2552,14 @@
                             </div>
                         </div>
 
-                        <button onclick="deleteOrder('${order.orderId}')" class="w-full px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-extrabold transition border border-rose-100">
-                            <i class="fa-solid fa-trash-can mr-1"></i> 주문 삭제
-                        </button>
+                        <div class="flex gap-1">
+                            <button type="button" onclick="openAdminOrderEdit('${order.orderId}')" class="flex-1 px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[10px] font-extrabold transition" title="주문 정보와 품목 수정">
+                                <i class="fa-solid fa-pen mr-1"></i>수정
+                            </button>
+                            <button onclick="deleteOrder('${order.orderId}')" class="flex-1 px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-extrabold transition border border-rose-100">
+                                <i class="fa-solid fa-trash-can mr-1"></i>삭제
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -2628,22 +2685,273 @@
         }
     };
 
-    window.updateOrderStatus = async function(orderId, newStatus) {
-        if (isDemoMode) {
-            const order = localOrders.find(o => o.orderId === orderId);
-            if (order) order.status = newStatus;
+    function applyOrderPatchInMemory(orderId, patch) {
+        const applyPatch = order => order.orderId === orderId ? { ...order, ...patch } : order;
+        globalOrders = globalOrders.map(applyPatch);
+        localOrders = localOrders.map(applyPatch);
+    }
 
-            showToast(newStatus === "배송완료" ? "✅ 배송완료 탭으로 주문을 이동했습니다." : `✅ 상태가 [${newStatus}]로 변경되었습니다.`);
-            loadAdminOrders();
+    function applyRemainingStockInMemory(remainingStock) {
+        if (!remainingStock || typeof remainingStock !== 'object') return;
+
+        products = products.map(product => Object.prototype.hasOwnProperty.call(remainingStock, product.id)
+            ? { ...product, stock: Number(remainingStock[product.id]) }
+            : product);
+        localProducts = products;
+        localStorage.setItem('teslap_products_cache', JSON.stringify(products));
+        renderProductsUI();
+        renderAdminProducts();
+    }
+
+    function getAdminOrderEditProduct(productId) {
+        return products.find(product => product.id === productId) || null;
+    }
+
+    function getAdminOrderEditOptions(product) {
+        return Array.isArray(product?.options) && product.options.length > 0 ? product.options : ['기본형'];
+    }
+
+    function getAdminOrderEditUnitPrice(item) {
+        if (Number.isInteger(item.sourceIndex)) return Number(item.unitPrice || 0);
+        const product = getAdminOrderEditProduct(item.productId);
+        return product ? Number(product.price || 0) + parseExtraCost(item.optionValue) : 0;
+    }
+
+    function renderAdminOrderEditTotals() {
+        const validItems = adminOrderEditCart.filter(item => item.productId && Number(item.quantity) > 0);
+        const productTotal = validItems.reduce((sum, item) => sum + getAdminOrderEditUnitPrice(item) * Number(item.quantity), 0);
+        const shippingFee = validItems.length > 0
+            ? shippingDefault + (document.getElementById('admin-edit-island')?.checked ? 3000 : 0)
+            : 0;
+
+        document.getElementById('admin-edit-product-total').textContent = productTotal.toLocaleString() + '원';
+        document.getElementById('admin-edit-shipping-fee').textContent = shippingFee.toLocaleString() + '원';
+        document.getElementById('admin-edit-final-total').textContent = (productTotal + shippingFee).toLocaleString() + '원';
+    }
+
+    function renderAdminOrderEditCart() {
+        const container = document.getElementById('admin-order-edit-cart');
+        if (!container) return;
+
+        const selectableProducts = products.filter(product => !isProductSoldOut(product));
+        container.innerHTML = adminOrderEditCart.map((item, index) => {
+            const quantity = Math.max(1, Math.min(MAX_PRODUCT_STOCK, Number(item.quantity) || 1));
+
+            if (Number.isInteger(item.sourceIndex)) {
+                return '<div class="flex flex-col sm:flex-row sm:items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">' +
+                    '<div class="min-w-0 flex-1"><strong class="block truncate text-slate-800">' + escapeHtml(item.optionName) + '</strong>' +
+                    '<span class="text-[10px] font-semibold text-slate-400">기존 단가 ' + Number(item.unitPrice || 0).toLocaleString() + '원</span></div>' +
+                    '<div class="flex items-center gap-2"><label class="flex items-center gap-1 text-[10px] font-bold text-slate-500">수량<input type="number" min="1" max="999" value="' + quantity + '" onchange="updateAdminOrderEditQuantity(' + index + ', this.value)" class="w-14 rounded-lg border border-slate-200 bg-white px-1 py-1.5 text-center text-xs font-bold outline-none focus:border-indigo-500"></label>' +
+                    '<button type="button" onclick="removeAdminOrderEditItem(' + index + ')" class="w-8 h-8 rounded-lg text-rose-600 hover:bg-rose-50 transition" title="품목 삭제"><i class="fa-solid fa-trash-can"></i></button></div></div>';
+            }
+
+            const product = getAdminOrderEditProduct(item.productId);
+            const productOptions = ['<option value="">상품 선택</option>'].concat(selectableProducts.map(candidate => '<option value="' + escapeHtml(candidate.id) + '"' + (candidate.id === item.productId ? ' selected' : '') + '>' + escapeHtml(candidate.name) + '</option>')).join('');
+            const optionOptions = ['<option value="">옵션 선택</option>'].concat(product ? getAdminOrderEditOptions(product).filter(option => !isSoldOutText(option)).map(option => '<option value="' + escapeHtml(option) + '"' + (option === item.optionValue ? ' selected' : '') + '>' + escapeHtml(option) + '</option>') : []).join('');
+            const unitPrice = getAdminOrderEditUnitPrice(item);
+
+            return '<div class="flex flex-col gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">' +
+                '<div class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">' +
+                '<select onchange="setAdminOrderEditProduct(' + index + ', this.value)" class="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">' + productOptions + '</select>' +
+                '<select onchange="setAdminOrderEditOption(' + index + ', this.value)"' + (product ? '' : ' disabled') + ' class="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100">' + optionOptions + '</select>' +
+                '<button type="button" onclick="removeAdminOrderEditItem(' + index + ')" class="h-9 w-9 rounded-lg bg-white text-rose-600 hover:bg-rose-50 transition" title="품목 삭제"><i class="fa-solid fa-trash-can"></i></button></div>' +
+                '<div class="flex items-center justify-between"><span class="text-[10px] font-bold text-indigo-600">추가 단가 ' + unitPrice.toLocaleString() + '원</span><label class="flex items-center gap-1 text-[10px] font-bold text-slate-500">수량<input type="number" min="1" max="999" value="' + quantity + '" onchange="updateAdminOrderEditQuantity(' + index + ', this.value)" class="w-14 rounded-lg border border-slate-200 bg-white px-1 py-1.5 text-center text-xs font-bold outline-none focus:border-indigo-500"></label></div></div>';
+        }).join('');
+
+        if (adminOrderEditCart.length === 0) {
+            container.innerHTML = '<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-slate-400">품목을 하나 이상 추가해 주세요.</div>';
+        }
+
+        renderAdminOrderEditTotals();
+    }
+
+    window.openAdminOrderEdit = function(orderId) {
+        const order = globalOrders.find(item => item.orderId === orderId) || localOrders.find(item => item.orderId === orderId);
+        if (!order) {
+            showToast('❌ 수정할 주문 정보를 찾을 수 없습니다.');
             return;
         }
 
-        try {
-            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-            await updateDoc(orderRef, { status: newStatus });
+        editingAdminOrder = JSON.parse(JSON.stringify(order));
+        adminOrderEditCart = (order.cart || []).map((item, sourceIndex) => ({
+            sourceIndex,
+            productId: item.productId,
+            optionName: item.optionName,
+            unitPrice: Number(item.unitPrice || 0),
+            quantity: Number(item.quantity || 1)
+        }));
 
-            showToast(newStatus === "배송완료" ? "✅ 배송완료 탭으로 주문을 이동했습니다." : `✅ 상태가 [${newStatus}]로 변경되었습니다.`);
-            loadAdminOrders();
+        document.getElementById('admin-order-edit-id').textContent = order.orderId || '-';
+        document.getElementById('admin-edit-orderer-name').value = order.ordererName || '';
+        document.getElementById('admin-edit-orderer-phone').value = order.ordererPhone || '';
+        document.getElementById('admin-edit-orderer-nickname').value = order.ordererNickname || '';
+        document.getElementById('admin-edit-orderer-car').value = order.ordererCarInfo || '';
+        document.getElementById('admin-edit-ship-name').value = order.shipName || '';
+        document.getElementById('admin-edit-ship-phone').value = order.shipPhone || '';
+        document.getElementById('admin-edit-depositor-name').value = order.depositorName || '';
+        document.getElementById('admin-edit-postal-code').value = order.postalCode || '';
+        document.getElementById('admin-edit-address-basic').value = order.addressBasic || '';
+        document.getElementById('admin-edit-address-detail').value = order.addressDetail || '';
+        document.getElementById('admin-edit-shipping-memo').value = order.shippingMemo === '없음' ? '' : (order.shippingMemo || '');
+        document.getElementById('admin-edit-island').checked = Boolean(order.isIslandShipping);
+        renderAdminOrderEditCart();
+        openModal('admin-order-edit-modal');
+    };
+
+    window.closeAdminOrderEditModal = function() {
+        closeModal('admin-order-edit-modal');
+        editingAdminOrder = null;
+        adminOrderEditCart = [];
+    };
+
+    window.addAdminOrderEditItem = function() {
+        adminOrderEditCart.push({ sourceIndex: null, productId: '', optionValue: '', quantity: 1 });
+        renderAdminOrderEditCart();
+    };
+
+    window.removeAdminOrderEditItem = function(index) {
+        adminOrderEditCart.splice(index, 1);
+        renderAdminOrderEditCart();
+    };
+
+    window.updateAdminOrderEditQuantity = function(index, value) {
+        const quantity = Math.max(1, Math.min(MAX_PRODUCT_STOCK, Number(value) || 1));
+        if (adminOrderEditCart[index]) adminOrderEditCart[index].quantity = quantity;
+        renderAdminOrderEditCart();
+    };
+
+    window.setAdminOrderEditProduct = function(index, productId) {
+        const item = adminOrderEditCart[index];
+        const product = getAdminOrderEditProduct(productId);
+        if (!item) return;
+        item.productId = productId;
+        item.optionValue = product ? (getAdminOrderEditOptions(product).find(option => !isSoldOutText(option)) || '') : '';
+        renderAdminOrderEditCart();
+    };
+
+    window.setAdminOrderEditOption = function(index, optionValue) {
+        if (adminOrderEditCart[index]) adminOrderEditCart[index].optionValue = optionValue;
+        renderAdminOrderEditCart();
+    };
+
+    function getAdminOrderEditDetails() {
+        return {
+            ordererName: document.getElementById('admin-edit-orderer-name').value.trim(),
+            ordererPhone: document.getElementById('admin-edit-orderer-phone').value.trim(),
+            ordererNickname: document.getElementById('admin-edit-orderer-nickname').value.trim(),
+            ordererCarInfo: document.getElementById('admin-edit-orderer-car').value.trim(),
+            shipName: document.getElementById('admin-edit-ship-name').value.trim(),
+            shipPhone: document.getElementById('admin-edit-ship-phone').value.trim(),
+            depositorName: document.getElementById('admin-edit-depositor-name').value.trim(),
+            postalCode: document.getElementById('admin-edit-postal-code').value.trim(),
+            addressBasic: document.getElementById('admin-edit-address-basic').value.trim(),
+            addressDetail: document.getElementById('admin-edit-address-detail').value.trim(),
+            shippingMemo: document.getElementById('admin-edit-shipping-memo').value.trim(),
+            isIslandShipping: document.getElementById('admin-edit-island').checked
+        };
+    }
+
+    function getAdminOrderEditPayload() {
+        const cart = adminOrderEditCart.map(item => ({
+            productId: item.productId,
+            quantity: Number(item.quantity),
+            sourceIndex: Number.isInteger(item.sourceIndex) ? item.sourceIndex : null,
+            optionValue: item.optionValue || ''
+        }));
+
+        if (cart.length === 0 || cart.some(item => !item.productId || !Number.isInteger(item.quantity) || item.quantity < 1 || (!Number.isInteger(item.sourceIndex) && !item.optionValue))) {
+            throw new Error('주문 품목과 옵션을 모두 선택해 주세요.');
+        }
+
+        return { orderId: editingAdminOrder.orderId, details: getAdminOrderEditDetails(), cart };
+    }
+
+    function buildDemoEditedCart(payload) {
+        return payload.cart.map(item => {
+            if (Number.isInteger(item.sourceIndex)) {
+                const original = editingAdminOrder.cart[item.sourceIndex];
+                return { ...original, quantity: item.quantity };
+            }
+            const product = getAdminOrderEditProduct(item.productId);
+            return {
+                productId: product.id,
+                optionName: product.name + ' (' + String(item.optionValue).split(' (')[0] + ')',
+                unitPrice: Number(product.price || 0) + parseExtraCost(item.optionValue),
+                quantity: item.quantity
+            };
+        });
+    }
+
+    function applyDemoInventoryChange(originalCart, nextCart) {
+        const originalByProduct = new Map();
+        const nextByProduct = new Map();
+        originalCart.forEach(item => originalByProduct.set(item.productId, (originalByProduct.get(item.productId) || 0) + Number(item.quantity || 0)));
+        nextCart.forEach(item => nextByProduct.set(item.productId, (nextByProduct.get(item.productId) || 0) + Number(item.quantity || 0)));
+        const remainingStock = {};
+
+        for (const productId of new Set([...originalByProduct.keys(), ...nextByProduct.keys()])) {
+            const delta = (nextByProduct.get(productId) || 0) - (originalByProduct.get(productId) || 0);
+            const product = getAdminOrderEditProduct(productId);
+            if (delta > 0 && (!product || isProductSoldOut(product) || getProductStock(product) < delta)) throw new Error('재고가 부족하여 주문을 수정할 수 없습니다.');
+            if (product && delta !== 0) remainingStock[productId] = Math.max(0, Math.min(MAX_PRODUCT_STOCK, getProductStock(product) - delta));
+        }
+
+        applyRemainingStockInMemory(remainingStock);
+    }
+
+    window.saveAdminOrderEdit = async function() {
+        if (!editingAdminOrder || isSavingAdminOrder) return;
+        const saveButton = document.getElementById('admin-order-edit-save');
+
+        try {
+            const payload = getAdminOrderEditPayload();
+            isSavingAdminOrder = true;
+            saveButton.disabled = true;
+            saveButton.innerHTML = '<i class="fa-solid fa-spinner animate-spin mr-1"></i>저장 중';
+
+            if (isDemoMode) {
+                const nextCart = buildDemoEditedCart(payload);
+                applyDemoInventoryChange(editingAdminOrder.cart || [], nextCart);
+                const productTotal = nextCart.reduce((sum, item) => sum + Number(item.unitPrice || 0) * Number(item.quantity || 0), 0);
+                const shippingFee = shippingDefault + (payload.details.isIslandShipping ? 3000 : 0);
+                applyOrderPatchInMemory(payload.orderId, { ...payload.details, cart: nextCart, productTotal, shippingFee, finalTotal: productTotal + shippingFee });
+            } else {
+                if (!updateOrderWithInventoryCall) throw new Error('주문 수정 연결을 준비하지 못했습니다.');
+                const result = await updateOrderWithInventoryCall(payload);
+                applyOrderPatchInMemory(payload.orderId, result.data.order);
+                applyRemainingStockInMemory(result.data.remainingStock);
+            }
+
+            closeAdminOrderEditModal();
+            renderAdminOrderViews();
+            showToast('✅ 주문 정보와 품목을 저장했습니다.');
+        } catch (error) {
+            console.error('Admin order edit failed.', error);
+            const details = error?.details || error?.customData?.details;
+            showToast(details?.reason === 'insufficient-stock' ? '❌ ' + details.productName + ' 재고가 부족합니다. 현재 ' + details.availableStock + '개' : '❌ ' + (error?.message || '주문 저장에 실패했습니다.'));
+        } finally {
+            isSavingAdminOrder = false;
+            if (saveButton) {
+                saveButton.disabled = false;
+                saveButton.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i>주문 저장';
+            }
+        }
+    };
+
+    window.updateOrderStatus = async function(orderId, newStatus) {
+        const updates = { status: newStatus };
+
+        try {
+            if (isDemoMode) {
+                applyOrderPatchInMemory(orderId, updates);
+            } else {
+                const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+                await updateDoc(orderRef, updates);
+                applyOrderPatchInMemory(orderId, updates);
+            }
+
+            renderAdminOrderViews();
+            showToast(newStatus === "배송완료" ? "✅ 배송완료 탭으로 주문을 이동했습니다." : "✅ 상태가 [" + newStatus + "]로 변경되었습니다.");
         } catch (err) {
             console.error("Status update failed.", err);
             showToast("❌ 상태 변경 실패");
@@ -2651,36 +2959,24 @@
     };
 
     window.saveTrackingNumber = async function(orderId) {
-        const trackingVal = document.getElementById(`tracking-input-${orderId}`).value.trim();
-        const courierVal = document.getElementById(`courier-select-${orderId}`).value;
-
-        if (isDemoMode) {
-            const order = localOrders.find(o => o.orderId === orderId);
-
-            if (order) {
-                order.trackingNumber = trackingVal;
-                order.courier = courierVal;
-                if (trackingVal) order.status = "배송중";
-            }
-
-            showToast("✅ 송장 정보가 저장되었습니다.");
-            loadAdminOrders();
-            return;
-        }
+        const trackingInput = document.getElementById('tracking-input-' + orderId);
+        const courierInput = document.getElementById('courier-select-' + orderId);
+        const trackingVal = trackingInput ? trackingInput.value.trim() : '';
+        const courierVal = courierInput ? courierInput.value : '한진택배';
+        const updates = { trackingNumber: trackingVal, courier: courierVal };
+        if (trackingVal) updates.status = "배송중";
 
         try {
-            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-            const updates = {
-                trackingNumber: trackingVal,
-                courier: courierVal
-            };
+            if (isDemoMode) {
+                applyOrderPatchInMemory(orderId, updates);
+            } else {
+                const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+                await updateDoc(orderRef, updates);
+                applyOrderPatchInMemory(orderId, updates);
+            }
 
-            if (trackingVal) updates.status = "배송중";
-
-            await updateDoc(orderRef, updates);
-
+            renderAdminOrderViews();
             showToast("✅ 송장 정보가 저장되었습니다.");
-            loadAdminOrders();
         } catch (err) {
             console.error("Tracking save failed.", err);
             showToast("❌ 송장 저장 실패");
