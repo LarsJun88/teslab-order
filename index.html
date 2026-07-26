@@ -1996,6 +1996,21 @@
         }
     };
 
+    function getCourierTrackingUrl(courier, trackingNumber) {
+        const waybill = String(trackingNumber || '').replace(/[^0-9A-Za-z-]/g, '');
+
+        if (!waybill) return '';
+
+        const encodedWaybill = encodeURIComponent(waybill);
+        const trackingUrls = {
+            "한진택배": 'https://www.hanjin.com/kor/CMS/DeliveryMgr/WaybillResult.do?mCode=MN038&wblnum=' + encodedWaybill,
+            "CJ대한통운": 'https://www.cjlogistics.com/ko/tool/parcel/tracking?gnbInvcNo=' + encodedWaybill,
+            "롯데택배": 'https://www.lotteglogis.com/home/reservation/tracking/linkView?InvNo=' + encodedWaybill,
+            "우체국": 'https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=' + encodedWaybill
+        };
+
+        return trackingUrls[courier] || '';
+    }
     function renderFoundOrders(foundOrders) {
         const resultContainer = document.getElementById('track-result-container');
 
@@ -2022,6 +2037,10 @@
             };
 
             const badgeClass = statusColors[order.status] || "bg-slate-100 text-slate-600";
+            const trackingUrl = getCourierTrackingUrl(order.courier || '한진택배', order.trackingNumber);
+            const trackingMarkup = trackingUrl
+                ? `<a href="${trackingUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 font-mono font-black text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-900"><span>[${escapeHtml(order.courier || '한진택배')}] ${escapeHtml(order.trackingNumber)}</span><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></a>`
+                : "검수 및 패키징 대기중";
 
             return `
                 <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3 text-xs">
@@ -2051,8 +2070,8 @@
                         <p><strong>배송지:</strong> [${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
                         <p class="pt-1.5 border-t border-slate-200/50">
                             <strong class="mr-1.5">운송장:</strong>
-                            <span class="text-xs font-mono font-black text-indigo-700 align-baseline">
-                                ${order.trackingNumber ? `[${order.courier || '한진택배'}] ${order.trackingNumber}` : "검수 및 패키징 대기중"}
+                            <span class="text-xs align-baseline">
+                                ${trackingMarkup}
                             </span>
                         </p>
                     </div>
