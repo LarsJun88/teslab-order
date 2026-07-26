@@ -15,6 +15,8 @@ const TELEGRAM_CHAT_ID = defineSecret("TELEGRAM_CHAT_ID");
 const APP_ID = "tkc-co-order-2026";
 const MAX_PRODUCT_STOCK = 999;
 const DEFAULT_PRODUCT_STOCK = 999;
+const CUSTOMER_SHIPPING_FEE = 4000;
+const ISLAND_SHIPPING_FEE = 3000;
 const DETAIL_IMAGE_MAX_DIMENSION = 720;
 const DETAIL_IMAGE_QUALITY = 68;
 const THUMBNAIL_IMAGE_MAX_WIDTH = 320;
@@ -81,10 +83,14 @@ function buildTelegramMessage(order) {
   const finalTotal = formatWon(order.finalTotal);
   const orderId = order.orderId || "주문번호 없음";
   const cartItems = formatCartItems(order.cart);
+  const nickname = order.ordererNickname || "-";
+  const phone = order.ordererPhone || "-";
 
   return [
     "<b>새 주문 접수</b>",
     `주문자: ${escapeHtml(ordererName)}`,
+    `닉네임: ${escapeHtml(nickname)}`,
+    `연락처: ${escapeHtml(phone)}`,
     `총 금액: ${escapeHtml(finalTotal)}`,
     "",
     "<b>주문 품목</b>",
@@ -221,6 +227,25 @@ function parseOptionExtraCost(option) {
   return match[1] === "-" ? -amount : amount;
 }
 
+function getProductDiscountAmount(product) {
+  const originalPrice = Math.max(0, Math.floor(Number(product?.price || 0)));
+  const requestedDiscount = Math.floor(Number(product?.discountAmount || 0));
+  if (!Number.isFinite(requestedDiscount)) return 0;
+  return Math.max(0, Math.min(originalPrice, requestedDiscount));
+}
+
+function getProductSalePrice(product) {
+  return Math.max(0, Math.floor(Number(product?.price || 0)) - getProductDiscountAmount(product));
+}
+
+function getProductUnitPrice(product, optionValue) {
+  return Math.max(0, getProductSalePrice(product) + parseOptionExtraCost(optionValue));
+}
+
+function getProductOriginalUnitPrice(product, optionValue) {
+  return Math.max(0, Math.floor(Number(product?.price || 0)) + parseOptionExtraCost(optionValue));
+}
+
 function normalizeOptionLabel(option) {
   return String(option || "").replace(/\s*\([+-]\s*[\d,]+원\)\s*$/, "").trim();
 }
@@ -250,6 +275,7 @@ function validateOrderForInventory(order) {
     const unitPrice = Number(item?.unitPrice);
 
     if (!String(item?.productId || "").trim() ||
+        !String(item?.optionValue || "").trim() ||
         !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_PRODUCT_STOCK ||
         !Number.isFinite(unitPrice) || unitPrice < 0) {
       throw new HttpsError("invalid-argument", "주문 수량 또는 품목 정보가 올바르지 않습니다.");
@@ -372,6 +398,16 @@ exports.submitOrderWithInventory = onCall(
       for (const item of order.cart) {
         const productId = String(item.productId);
         const quantity = Number(item.quantity);
+        const optionValue = String(item.optionValue || "").trim();
+        const product = catalogProducts.find((candidate) => candidate.id === productId);
+        const options = Array.isArray(product?.options) && product.options.length > 0 ? product.options : ["기본형"];
+        const expectedUnitPrice = product ? getProductUnitPrice(product, optionValue) : -1;
+
+        if (!product || isProductManuallySoldOut(product) || !options.includes(optionValue) ||
+            isOptionManuallySoldOut(optionValue) || Number(item.unitPrice) !== expectedUnitPrice) {
+          throw new HttpsError("failed-precondition", "상품 가격 또는 옵션이 변경되었습니다. 장바구니를 다시 확인해 주세요.");
+        }
+
         requestedByProduct.set(productId, (requestedByProduct.get(productId) || 0) + quantity);
       }
 
@@ -404,13 +440,25 @@ exports.submitOrderWithInventory = onCall(
         };
       });
 
+      const normalizedCart = order.cart.map((item) => {
+        const product = catalogProducts.find((candidate) => candidate.id === String(item.productId));
+        const optionValue = String(item.optionValue || "").trim();
+        return {
+          ...item,
+          optionValue,
+          quantity: Number(item.quantity),
+          originalUnitPrice: getProductOriginalUnitPrice(product, optionValue),
+          unitPrice: getProductUnitPrice(product, optionValue)
+        };
+      });
+      const productTotal = normalizedCart.reduce((total, item) => total + item.unitPrice * item.quantity, 0);
+      const shippingFee = CUSTOMER_SHIPPING_FEE + (order.isIslandShipping ? ISLAND_SHIPPING_FEE : 0);
       const storedOrder = {
         ...order,
-        cart: order.cart.map((item) => ({
-          ...item,
-          quantity: Number(item.quantity),
-          unitPrice: Number(item.unitPrice)
-        })),
+        cart: normalizedCart,
+        productTotal,
+        shippingFee,
+        finalTotal: productTotal + shippingFee,
         ordererNameNormalized: normalizeLookupName(order.ordererName),
         ordererPhoneDigits: normalizePhoneDigits(order.ordererPhone),
         orderLookupKey: buildOrderLookupKey(order.ordererName, order.ordererPhone),
@@ -487,7 +535,7 @@ exports.updateOrderWithInventory = onCall(
           const originalItem = originalCart[sourceIndex];
           if (!originalItem || usedSourceIndexes.has(sourceIndex) || String(originalItem.productId) !== productId) throw new HttpsError("failed-precondition", "기존 주문 품목이 변경되었습니다. 주문 목록을 다시 확인해 주세요.");
           usedSourceIndexes.add(sourceIndex);
-          nextCart.push({ productId, optionName: String(originalItem.optionName || "품목"), unitPrice: Number(originalItem.unitPrice || 0), quantity });
+          nextCart.push({ ...originalItem, productId, optionName: String(originalItem.optionName || "품목"), unitPrice: Number(originalItem.unitPrice || 0), quantity });
           continue;
         }
 
@@ -495,7 +543,7 @@ exports.updateOrderWithInventory = onCall(
         const optionValue = String(draftItem?.optionValue || "").trim();
         const options = Array.isArray(product?.options) && product.options.length > 0 ? product.options : ["기본형"];
         if (!product || isProductManuallySoldOut(product) || !options.includes(optionValue) || isOptionManuallySoldOut(optionValue)) throw new HttpsError("failed-precondition", "추가할 수 없는 품목 또는 옵션입니다.");
-        nextCart.push({ productId, optionName: String(product.name) + " (" + normalizeOptionLabel(optionValue) + ")", unitPrice: Number(product.price || 0) + parseOptionExtraCost(optionValue), quantity });
+        nextCart.push({ productId, optionName: String(product.name) + " (" + normalizeOptionLabel(optionValue) + ")", optionValue, originalUnitPrice: getProductOriginalUnitPrice(product, optionValue), unitPrice: getProductUnitPrice(product, optionValue), quantity });
       }
 
       const originalByProduct = new Map();

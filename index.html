@@ -1119,6 +1119,29 @@
         return 0;
     }
 
+    function getProductPriceInfo(product) {
+        const originalPrice = Math.max(0, Math.floor(Number(product?.price || 0)));
+        const requestedDiscount = Math.floor(Number(product?.discountAmount || 0));
+        const discountAmount = Number.isFinite(requestedDiscount) ? Math.max(0, Math.min(originalPrice, requestedDiscount)) : 0;
+        const salePrice = Math.max(0, originalPrice - discountAmount);
+        const discountRate = discountAmount > 0 && originalPrice > 0 ? Math.round((discountAmount / originalPrice) * 100) : 0;
+        return { originalPrice, discountAmount, salePrice, discountRate };
+    }
+
+    function getProductSalePrice(product) {
+        return getProductPriceInfo(product).salePrice;
+    }
+
+    function renderProductPriceHtml(product, compact = false) {
+        const priceInfo = getProductPriceInfo(product);
+        if (priceInfo.discountAmount <= 0) {
+            return `<span class="${compact ? "text-xs sm:text-sm font-black text-slate-950 whitespace-nowrap" : "text-xl font-black text-slate-950"}">${priceInfo.salePrice.toLocaleString()}원</span>`;
+        }
+        const originalClass = compact ? "text-[9px] sm:text-[10px] font-semibold text-slate-400 line-through whitespace-nowrap" : "text-xs font-bold text-slate-400 line-through";
+        const saleClass = compact ? "text-xs sm:text-sm font-black text-rose-600 whitespace-nowrap" : "text-xl font-black text-rose-600";
+        return `<span class="flex flex-col items-end leading-tight"><span class="${originalClass}">${priceInfo.originalPrice.toLocaleString()}원</span><span class="${saleClass}">${priceInfo.salePrice.toLocaleString()}원 <span class="text-[10px] font-extrabold">(-${priceInfo.discountRate}%)</span></span></span>`;
+    }
+
     function isSoldOutText(value) {
         return /\(\s*품절\s*\)/.test(String(value || ''));
     }
@@ -1351,6 +1374,7 @@
             const safeName = escapeHtml(prod.name || '상품');
             const safeDescription = escapeHtml(prod.desc || '');
             const safeItemNo = escapeHtml(prod.itemNo || '');
+            const priceMarkup = renderProductPriceHtml(prod, true);
 
             return `
             <div class="bg-white border border-slate-100 rounded-xl sm:rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group ${soldOut ? 'opacity-80' : ''}" onclick="openProductDetailModal('${prod.id}')">
@@ -1368,7 +1392,7 @@
                     <h3 class="font-bold text-slate-800 text-xs sm:text-sm lg:text-base group-hover:text-indigo-600 transition leading-tight line-clamp-2 min-h-[2rem] sm:min-h-0">${safeName}</h3>
                     <p class="text-[10px] sm:text-xs text-slate-400 truncate">${safeDescription}</p>
                     <div class="flex items-center justify-between gap-1 pt-0.5 sm:pt-1">
-                        <span class="text-xs sm:text-sm font-black text-slate-950 whitespace-nowrap">${Number(prod.price || 0).toLocaleString()}원</span>
+                        ${priceMarkup}
                         <span class="text-[10px] ${soldOut ? 'text-rose-600 bg-rose-50' : lowStock ? 'text-amber-700 bg-amber-50' : 'text-emerald-700 bg-emerald-50'} font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded whitespace-nowrap">${soldOut ? '품절' : '재고 ' + stock + '개'}</span>
                     </div>
                 </div>
@@ -1387,7 +1411,7 @@
         document.getElementById('detail-item-no').textContent = prod.itemNo || '';
         document.getElementById('detail-title').textContent = prod.name || '';
         document.getElementById('detail-desc').textContent = prod.desc || '';
-        document.getElementById('detail-price').textContent = `${Number(prod.price || 0).toLocaleString()}원`;
+        document.getElementById('detail-price').innerHTML = renderProductPriceHtml(prod, false);
         const stock = getProductStock(prod);
         const stockDisplay = document.getElementById('detail-stock-display');
         stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
@@ -1535,7 +1559,7 @@
 
         const selectedVal = document.getElementById('detail-opt-select').value;
         const extra = parseExtraCost(selectedVal);
-        const cost = (Number(activeProduct.price || 0) + extra) * activeDetailQty;
+        const cost = Math.max(0, getProductSalePrice(activeProduct) + extra) * activeDetailQty;
 
         document.getElementById('detail-total-cost').textContent = `${cost.toLocaleString()}원`;
         updateDetailAddButtonState();
@@ -1563,7 +1587,9 @@
         }
 
         const extra = parseExtraCost(selectedVal);
-        const finalUnitCost = Number(activeProduct.price || 0) + extra;
+        const priceInfo = getProductPriceInfo(activeProduct);
+        const originalUnitCost = Math.max(0, priceInfo.originalPrice + extra);
+        const finalUnitCost = Math.max(0, priceInfo.salePrice + extra);
         const optionString = `${activeProduct.name} (${selectedVal.split(" (")[0]})`;
 
         const existing = cart.find(item => item.optionName === optionString);
@@ -1574,6 +1600,8 @@
             cart.push({
                 productId: activeProduct.id,
                 optionName: optionString,
+                optionValue: selectedVal,
+                originalUnitPrice: originalUnitCost,
                 unitPrice: finalUnitCost,
                 quantity: activeDetailQty
             });

@@ -483,9 +483,9 @@
                         </div>
                         <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
                             <label class="relative block w-full sm:w-64">
-                                <span class="sr-only">이름 또는 연락처로 주문 검색</span>
+                                <span class="sr-only">이름, 닉네임 또는 연락처로 주문 검색</span>
                                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                                <input type="search" id="admin-order-search" oninput="filterAdminOrders()" placeholder="이름 또는 연락처 검색" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-xs font-medium text-slate-700 outline-none transition focus:border-indigo-500">
+                                <input type="search" id="admin-order-search" oninput="filterAdminOrders()" placeholder="이름, 닉네임 또는 연락처 검색" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-xs font-medium text-slate-700 outline-none transition focus:border-indigo-500">
                             </label>
                             <button type="button" id="order-notification-btn" onclick="enableOrderNotifications()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
                                 <i class="fa-solid fa-bell"></i> 주문 알림 켜기
@@ -527,9 +527,9 @@
                             <p class="text-xs text-slate-400">배송이 완료된 주문을 보관하고 필요할 때 다시 확인합니다.</p>
                         </div>
                         <label class="relative block w-full sm:w-72">
-                            <span class="sr-only">이름 또는 연락처로 배송완료 주문 검색</span>
+                            <span class="sr-only">이름, 닉네임 또는 연락처로 배송완료 주문 검색</span>
                             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                            <input type="search" id="completed-order-search" oninput="filterCompletedOrders()" placeholder="이름 또는 연락처 검색" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-xs font-medium text-slate-700 outline-none transition focus:border-indigo-500">
+                            <input type="search" id="completed-order-search" oninput="filterCompletedOrders()" placeholder="이름, 닉네임 또는 연락처 검색" class="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-xs font-medium text-slate-700 outline-none transition focus:border-indigo-500">
                         </label>
                     </div>
 
@@ -835,6 +835,11 @@
             <div>
                 <label class="block font-bold text-slate-600 mb-1">기본 가격</label>
                 <input type="number" id="edit-prod-price" placeholder="12000" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block font-bold text-slate-600 mb-1">할인 금액</label>
+                <input type="number" id="edit-prod-discount" min="0" step="1" value="0" placeholder="예: 2000" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
+                <span class="text-[10px] text-slate-400">할인 금액을 입력하면 고객 화면에 할인가와 할인율이 표시됩니다.</span>
             </div>
             <div>
                 <label class="block font-bold text-slate-600 mb-1">재고 수량 (0~999)</label>
@@ -1413,6 +1418,29 @@
         return 0;
     }
 
+    function getProductPriceInfo(product) {
+        const originalPrice = Math.max(0, Math.floor(Number(product?.price || 0)));
+        const requestedDiscount = Math.floor(Number(product?.discountAmount || 0));
+        const discountAmount = Number.isFinite(requestedDiscount) ? Math.max(0, Math.min(originalPrice, requestedDiscount)) : 0;
+        const salePrice = Math.max(0, originalPrice - discountAmount);
+        const discountRate = discountAmount > 0 && originalPrice > 0 ? Math.round((discountAmount / originalPrice) * 100) : 0;
+        return { originalPrice, discountAmount, salePrice, discountRate };
+    }
+
+    function getProductSalePrice(product) {
+        return getProductPriceInfo(product).salePrice;
+    }
+
+    function renderProductPriceHtml(product, compact = false) {
+        const priceInfo = getProductPriceInfo(product);
+        if (priceInfo.discountAmount <= 0) {
+            return `<span class="${compact ? "text-sm font-black text-slate-950" : "text-xl font-black text-slate-950"}">${priceInfo.salePrice.toLocaleString()}원</span>`;
+        }
+        const originalClass = compact ? "text-[10px] font-semibold text-slate-400 line-through" : "text-xs font-bold text-slate-400 line-through";
+        const saleClass = compact ? "text-sm font-black text-rose-600" : "text-xl font-black text-rose-600";
+        return `<span class="flex flex-col items-end leading-tight"><span class="${originalClass}">${priceInfo.originalPrice.toLocaleString()}원</span><span class="${saleClass}">${priceInfo.salePrice.toLocaleString()}원 <span class="text-[10px] font-extrabold">(-${priceInfo.discountRate}%)</span></span></span>`;
+    }
+
     function isSoldOutText(value) {
         return /\(\s*품절\s*\)/.test(String(value || ''));
     }
@@ -1775,6 +1803,7 @@
             const safeName = escapeHtml(prod.name || '상품');
             const safeDescription = escapeHtml(prod.desc || '');
             const safeItemNo = escapeHtml(prod.itemNo || '');
+            const priceMarkup = renderProductPriceHtml(prod, true);
 
             return `
             <div class="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group ${soldOut ? 'opacity-80' : ''}" onclick="openProductDetailModal('${prod.id}')">
@@ -1792,7 +1821,7 @@
                     <h3 class="font-bold text-slate-800 text-sm sm:text-base group-hover:text-indigo-600 transition leading-tight">${safeName}</h3>
                     <p class="text-xs text-slate-400 truncate">${safeDescription}</p>
                     <div class="flex items-center justify-between pt-1">
-                        <span class="text-sm font-black text-slate-950">${Number(prod.price || 0).toLocaleString()}원</span>
+                        ${priceMarkup}
                         <span class="text-[10px] ${soldOut ? 'text-rose-600 bg-rose-50' : lowStock ? 'text-amber-700 bg-amber-50' : 'text-emerald-700 bg-emerald-50'} font-bold px-2 py-1 rounded">${soldOut ? '품절' : '재고 ' + stock + '개'}</span>
                     </div>
                 </div>
@@ -1813,7 +1842,7 @@
         document.getElementById('detail-item-no').textContent = prod.itemNo || '';
         document.getElementById('detail-title').textContent = prod.name || '';
         document.getElementById('detail-desc').textContent = prod.desc || '';
-        document.getElementById('detail-price').textContent = `${Number(prod.price || 0).toLocaleString()}원`;
+        document.getElementById('detail-price').innerHTML = renderProductPriceHtml(prod, false);
         const stock = getProductStock(prod);
         const stockDisplay = document.getElementById('detail-stock-display');
         stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
@@ -1963,7 +1992,7 @@
 
         const selectedVal = document.getElementById('detail-opt-select').value;
         const extra = parseExtraCost(selectedVal);
-        const cost = (Number(activeProduct.price || 0) + extra) * activeDetailQty;
+        const cost = Math.max(0, getProductSalePrice(activeProduct) + extra) * activeDetailQty;
 
         document.getElementById('detail-total-cost').textContent = `${cost.toLocaleString()}원`;
         updateDetailAddButtonState();
@@ -1991,7 +2020,9 @@
         }
 
         const extra = parseExtraCost(selectedVal);
-        const finalUnitCost = Number(activeProduct.price || 0) + extra;
+        const priceInfo = getProductPriceInfo(activeProduct);
+        const originalUnitCost = Math.max(0, priceInfo.originalPrice + extra);
+        const finalUnitCost = Math.max(0, priceInfo.salePrice + extra);
         const optionString = `${activeProduct.name} (${selectedVal.split(" (")[0]})`;
 
         const existing = cart.find(item => item.optionName === optionString);
@@ -2002,6 +2033,8 @@
             cart.push({
                 productId: activeProduct.id,
                 optionName: optionString,
+                optionValue: selectedVal,
+                originalUnitPrice: originalUnitCost,
                 unitPrice: finalUnitCost,
                 quantity: activeDetailQty
             });
@@ -2647,6 +2680,7 @@
 
         const searchableValues = [
             order.ordererName,
+            order.ordererNickname,
             order.ordererPhone,
             order.orderId
         ].map(normalizeOrderSearchValue);
@@ -2875,7 +2909,7 @@
     function getAdminOrderEditUnitPrice(item) {
         if (Number.isInteger(item.sourceIndex)) return Number(item.unitPrice || 0);
         const product = getAdminOrderEditProduct(item.productId);
-        return product ? Number(product.price || 0) + parseExtraCost(item.optionValue) : 0;
+        return product ? Math.max(0, getProductSalePrice(product) + parseExtraCost(item.optionValue)) : 0;
     }
 
     function renderAdminOrderEditTotals() {
@@ -3037,7 +3071,9 @@
             return {
                 productId: product.id,
                 optionName: product.name + ' (' + String(item.optionValue).split(' (')[0] + ')',
-                unitPrice: Number(product.price || 0) + parseExtraCost(item.optionValue),
+                optionValue: item.optionValue,
+                originalUnitPrice: Math.max(0, getProductPriceInfo(product).originalPrice + parseExtraCost(item.optionValue)),
+                unitPrice: Math.max(0, getProductSalePrice(product) + parseExtraCost(item.optionValue)),
                 quantity: item.quantity
             };
         });
@@ -3597,6 +3633,10 @@
             const thumbnailUrl = prod.thumbnailUrl || prod.img || '../assets/product-placeholder.svg';
             const thumbnailOptimized = isProductThumbnailOptimized(prod);
             const stock = getProductStock(prod);
+            const priceInfo = getProductPriceInfo(prod);
+            const priceLabel = priceInfo.discountAmount > 0
+                ? '<span class="text-slate-400 line-through">' + priceInfo.originalPrice.toLocaleString() + '\uC6D0</span> <strong class="text-rose-600">' + priceInfo.salePrice.toLocaleString() + '\uC6D0 (-' + priceInfo.discountRate + '%)</strong>'
+                : '<strong>' + priceInfo.salePrice.toLocaleString() + '\uC6D0</strong>';
 
             return `
             <div data-product-row="${idx}" ondragover="allowProductDrop(event, ${idx})" ondragleave="clearProductDrop(event)" ondrop="dropProduct(event, ${idx})" class="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs transition">
@@ -3605,7 +3645,7 @@
                     <div class="min-w-0">
                         <span class="font-mono text-indigo-600 font-bold block">${escapeHtml(prod.itemNo || '')}</span>
                         <strong class="text-slate-800 text-sm font-bold block truncate">${escapeHtml(prod.name || '')}</strong>
-                        <p class="text-[11px] text-slate-500">${Number(prod.price || 0).toLocaleString()}원 | 옵션 ${prod.options ? prod.options.length : 0}개 | <strong class="${stock === 0 ? 'text-rose-600' : stock <= 5 ? 'text-amber-600' : 'text-emerald-600'}">재고 ${stock}개${stock === 0 ? ' · 자동 품절' : ''}</strong></p>
+                        <p class="text-[11px] text-slate-500">${priceLabel} | \uC635\uC158 ${prod.options ? prod.options.length : 0}\uAC1C | <strong class="${stock === 0 ? 'text-rose-600' : stock <= 5 ? 'text-amber-600' : 'text-emerald-600'}">\uC7AC\uACE0 ${stock}\uAC1C${stock === 0 ? ' \u00B7 \uC790\uB3D9 \uD488\uC808' : ''}</strong></p>
                         <div class="flex flex-wrap gap-x-2 gap-y-0.5">
                             <span class="text-[10px] ${thumbnailOptimized ? 'text-emerald-600' : 'text-amber-600'} font-bold">${thumbnailOptimized ? '목록 320px 적용' : '첫 페이지 최적화 필요'}</span>
                             <span class="text-[10px] ${isProductDetailOptimized(prod) ? 'text-emerald-600' : 'text-amber-600'} font-bold">${isProductDetailOptimized(prod) ? '상세사진 720px 적용' : '상세사진 최적화 필요'}</span>
@@ -3855,6 +3895,7 @@
         document.getElementById('edit-prod-desc').value = "";
         document.getElementById('edit-prod-detail-spec').value = "";
         document.getElementById('edit-prod-price').value = "";
+        document.getElementById('edit-prod-discount').value = 0;
         document.getElementById('edit-prod-stock').value = DEFAULT_PRODUCT_STOCK;
         document.getElementById('edit-prod-img').value = "";
         document.getElementById('edit-prod-thumbnail').value = "";
@@ -3875,6 +3916,7 @@
         document.getElementById('edit-prod-desc').value = prod.desc || "";
         document.getElementById('edit-prod-detail-spec').value = prod.detailSpec || prod.desc || "";
         document.getElementById('edit-prod-price').value = prod.price || "";
+        document.getElementById('edit-prod-discount').value = getProductPriceInfo(prod).discountAmount;
         document.getElementById('edit-prod-stock').value = getProductStock(prod);
         document.getElementById('edit-prod-img').value = prod.img || "";
         document.getElementById('edit-prod-thumbnail').value = prod.thumbnailUrl || "";
@@ -3893,6 +3935,7 @@
         const desc = document.getElementById('edit-prod-desc').value.trim();
         const detailSpec = document.getElementById('edit-prod-detail-spec').value.trim();
         const price = parseInt(document.getElementById('edit-prod-price').value, 10);
+        const discountAmount = parseInt(document.getElementById('edit-prod-discount').value || '0', 10);
         const stock = parseInt(document.getElementById('edit-prod-stock').value, 10);
         const savedProductId = editId || `p_${Date.now()}`;
         const img = document.getElementById('edit-prod-img').value.trim();
@@ -3905,6 +3948,10 @@
             return;
         }
 
+        if (!Number.isInteger(discountAmount) || discountAmount < 0 || discountAmount > price) {
+            showToast("❌ 할인 금액은 0원부터 정가까지 입력할 수 있습니다.");
+            return;
+        }
         if (!Number.isInteger(stock) || stock < 0 || stock > MAX_PRODUCT_STOCK) {
             showToast("❌ 재고는 0개부터 999개까지 입력해 주세요.");
             return;
@@ -3933,6 +3980,7 @@
                         desc,
                         detailSpec,
                         price,
+                        discountAmount,
                         stock,
                         img,
                         thumbnailUrl,
@@ -3954,6 +4002,7 @@
                 desc,
                 detailSpec,
                 price,
+                discountAmount,
                 stock,
                 img,
                 thumbnailUrl,
