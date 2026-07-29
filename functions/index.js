@@ -211,6 +211,10 @@ function getProductStock(product) {
   return Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(stock)));
 }
 
+function isProductHidden(product) {
+  return product?.hidden === true;
+}
+
 function isProductManuallySoldOut(product) {
   return /\(\s*품절\s*\)/.test(String(product?.name || "")) ||
     /\(\s*품절\s*\)/.test(String(product?.itemNo || ""));
@@ -403,7 +407,7 @@ exports.submitOrderWithInventory = onCall(
         const options = Array.isArray(product?.options) && product.options.length > 0 ? product.options : ["기본형"];
         const expectedUnitPrice = product ? getProductUnitPrice(product, optionValue) : -1;
 
-        if (!product || isProductManuallySoldOut(product) || !options.includes(optionValue) ||
+        if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || !options.includes(optionValue) ||
             isOptionManuallySoldOut(optionValue) || Number(item.unitPrice) !== expectedUnitPrice) {
           throw new HttpsError("failed-precondition", "상품 가격 또는 옵션이 변경되었습니다. 장바구니를 다시 확인해 주세요.");
         }
@@ -415,7 +419,7 @@ exports.submitOrderWithInventory = onCall(
         const product = catalogProducts.find((item) => item.id === productId);
         const availableStock = product ? getProductStock(product) : 0;
 
-        if (!product || isProductManuallySoldOut(product) || availableStock < requestedQuantity) {
+        if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || availableStock < requestedQuantity) {
           throw new HttpsError(
             "failed-precondition",
             "재고가 부족하여 주문을 완료할 수 없습니다.",
@@ -542,7 +546,7 @@ exports.updateOrderWithInventory = onCall(
         const product = catalogProducts.find((item) => item.id === productId);
         const optionValue = String(draftItem?.optionValue || "").trim();
         const options = Array.isArray(product?.options) && product.options.length > 0 ? product.options : ["기본형"];
-        if (!product || isProductManuallySoldOut(product) || !options.includes(optionValue) || isOptionManuallySoldOut(optionValue)) throw new HttpsError("failed-precondition", "추가할 수 없는 품목 또는 옵션입니다.");
+        if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || !options.includes(optionValue) || isOptionManuallySoldOut(optionValue)) throw new HttpsError("failed-precondition", "추가할 수 없는 품목 또는 옵션입니다.");
         nextCart.push({ productId, optionName: String(product.name) + " (" + normalizeOptionLabel(optionValue) + ")", optionValue, originalUnitPrice: getProductOriginalUnitPrice(product, optionValue), unitPrice: getProductUnitPrice(product, optionValue), quantity });
       }
 
@@ -557,7 +561,7 @@ exports.updateOrderWithInventory = onCall(
         if (delta <= 0) continue;
         const product = catalogProducts.find((item) => item.id === productId);
         const availableStock = product ? getProductStock(product) : 0;
-        if (!product || isProductManuallySoldOut(product) || availableStock < delta) throw new HttpsError("failed-precondition", "재고가 부족하여 주문을 수정할 수 없습니다.", { reason: "insufficient-stock", productId, productName: product?.name || "판매 종료 상품", availableStock, requestedQuantity: delta });
+        if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || availableStock < delta) throw new HttpsError("failed-precondition", "재고가 부족하여 주문을 수정할 수 없습니다.", { reason: "insufficient-stock", productId, productName: product?.name || "판매 종료 상품", availableStock, requestedQuantity: delta });
       }
 
       const updatedProducts = catalogProducts.map((product) => {

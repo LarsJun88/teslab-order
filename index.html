@@ -1162,8 +1162,12 @@
         return Math.max(0, getProductStock(product) - getCartProductQuantity(product?.id, cartItems));
     }
 
+    function isProductHidden(product) {
+        return product?.hidden === true;
+    }
+
     function isProductSoldOut(product) {
-        return getProductStock(product) === 0 ||
+        return isProductHidden(product) || getProductStock(product) === 0 ||
             isSoldOutText(product?.name) ||
             isSoldOutText(product?.itemNo);
     }
@@ -1361,12 +1365,16 @@
     function renderProductsUI() {
         const listContainer = document.getElementById('dynamic-product-list');
 
-        if (!products || products.length === 0) {
+        const visibleProducts = Array.isArray(products)
+            ? products.filter(product => !isProductHidden(product))
+            : [];
+
+        if (visibleProducts.length === 0) {
             listContainer.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400">등록된 상품이 없습니다.</div>`;
             return;
         }
 
-        listContainer.innerHTML = products.map(prod => {
+        listContainer.innerHTML = visibleProducts.map(prod => {
             const soldOut = isProductSoldOut(prod);
             const stock = getProductStock(prod);
             const lowStock = stock > 0 && stock <= 5;
@@ -1403,7 +1411,7 @@
     }
     window.openProductDetailModal = function(prodId) {
         const prod = products.find(p => p.id === prodId);
-        if (!prod) return;
+        if (!prod || isProductHidden(prod)) return;
 
         activeProduct = prod;
         activeDetailQty = 1;

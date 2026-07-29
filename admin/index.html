@@ -1461,8 +1461,12 @@
         return Math.max(0, getProductStock(product) - getCartProductQuantity(product?.id, cartItems));
     }
 
+    function isProductHidden(product) {
+        return product?.hidden === true;
+    }
+
     function isProductSoldOut(product) {
-        return getProductStock(product) === 0 ||
+        return isProductHidden(product) || getProductStock(product) === 0 ||
             isSoldOutText(product?.name) ||
             isSoldOutText(product?.itemNo);
     }
@@ -1790,12 +1794,16 @@
     function renderProductsUI() {
         const listContainer = document.getElementById('dynamic-product-list');
 
-        if (!products || products.length === 0) {
+        const visibleProducts = Array.isArray(products)
+            ? products.filter(product => !isProductHidden(product))
+            : [];
+
+        if (visibleProducts.length === 0) {
             listContainer.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400">등록된 상품이 없습니다.</div>`;
             return;
         }
 
-        listContainer.innerHTML = products.map(prod => {
+        listContainer.innerHTML = visibleProducts.map(prod => {
             const soldOut = isProductSoldOut(prod);
             const stock = getProductStock(prod);
             const lowStock = stock > 0 && stock <= 5;
@@ -1834,7 +1842,7 @@
 
     window.openProductDetailModal = function(prodId) {
         const prod = products.find(p => p.id === prodId);
-        if (!prod) return;
+        if (!prod || isProductHidden(prod)) return;
 
         activeProduct = prod;
         activeDetailQty = 1;
@@ -3644,13 +3652,14 @@
             const thumbnailUrl = prod.thumbnailUrl || prod.img || '../assets/product-placeholder.svg';
             const thumbnailOptimized = isProductThumbnailOptimized(prod);
             const stock = getProductStock(prod);
+            const hidden = isProductHidden(prod);
             const priceInfo = getProductPriceInfo(prod);
             const priceLabel = priceInfo.discountAmount > 0
                 ? '<span class="text-slate-400 line-through">' + priceInfo.originalPrice.toLocaleString() + '\uC6D0</span> <strong class="text-rose-600">' + priceInfo.salePrice.toLocaleString() + '\uC6D0 (-' + priceInfo.discountRate + '%)</strong>'
                 : '<strong>' + priceInfo.salePrice.toLocaleString() + '\uC6D0</strong>';
 
             return `
-            <div data-product-row="${idx}" ondragover="allowProductDrop(event, ${idx})" ondragleave="clearProductDrop(event)" ondrop="dropProduct(event, ${idx})" class="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs transition">
+            <div data-product-row="${idx}" ondragover="allowProductDrop(event, ${idx})" ondragleave="clearProductDrop(event)" ondrop="dropProduct(event, ${idx})" class="p-4 ${hidden ? 'bg-slate-100 opacity-70' : 'bg-slate-50'} rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs transition">
                 <div class="flex items-center gap-3 min-w-0">
                     <img src="${escapeHtml(thumbnailUrl)}" class="w-12 h-12 object-cover rounded-lg border bg-white shrink-0" loading="lazy" decoding="async" width="48" height="48" onerror="this.onerror=null;this.src='../assets/product-placeholder.svg'">
                     <div class="min-w-0">
@@ -3674,6 +3683,9 @@
                     </button>
                     <button type="button" onclick="optimizeProductDetailImages('${prod.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition">상세사진</button>
                     <button type="button" onclick="generateThumbnailForProduct(${idx})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition">목록사진</button>
+                    <button type="button" onclick="toggleProductVisibility('${prod.id}')" title="${hidden ? '상품 노출' : '상품 숨김'}" class="w-9 h-9 rounded-lg ${hidden ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-600 hover:bg-slate-700'} text-white transition">
+                        <i class="fa-solid ${hidden ? 'fa-eye' : 'fa-eye-slash'}"></i>
+                    </button>
                     <button type="button" onclick="openEditProductModal(${idx})" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition">수정</button>
                     <button type="button" onclick="deleteProductConfig('${prod.id}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold transition">삭제</button>
                     <button type="button" draggable="true" ondragstart="startProductDrag(event, ${idx})" ondragend="endProductDrag(event)" title="드래그해서 순서 변경" class="w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing transition">
@@ -4293,6 +4305,24 @@
         } catch (err) {
             console.error("Product stock save failed.", err);
             showToast("❌ 재고 저장 실패");
+        }
+    };
+
+    window.toggleProductVisibility = async function(productId) {
+        const product = products.find(item => item.id === productId);
+        if (!product) return;
+
+        const hidden = !isProductHidden(product);
+        const updatedProducts = products.map(item => item.id === productId
+            ? { ...item, hidden }
+            : item);
+
+        try {
+            await persistCatalogProducts(updatedProducts);
+            showToast(hidden ? "상품을 숨겼습니다." : "상품을 노출했습니다.");
+        } catch (err) {
+            console.error("Product visibility update failed.", err);
+            showToast("상품 노출 상태 저장 실패");
         }
     };
 
