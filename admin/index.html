@@ -2747,7 +2747,7 @@
                             <option value="배송중" ${order.status === "배송중" ? "selected" : ""}>배송중</option>
                             <option value="배송완료" ${order.status === "배송완료" ? "selected" : ""}>배송완료</option>
                             </select>
-                            <button type="button" onclick="copyOrderForExcel('${order.orderId}')" class="shrink-0 rounded border border-indigo-100 bg-indigo-50 px-2 py-1 text-[10px] font-extrabold text-indigo-700 transition hover:bg-indigo-100" title="이름, 연락처, 주소, 주문품목, 금액을 엑셀 한 행으로 복사합니다.">
+                            <button type="button" onclick="copyOrderForExcel('${order.orderId}')" class="shrink-0 rounded border border-indigo-100 bg-indigo-50 px-2 py-1 text-[10px] font-extrabold text-indigo-700 transition hover:bg-indigo-100" title="이름, 연락처, 주소, 주문품목, 메모를 엑셀 한 행으로 복사합니다.">
                                 <i class="fa-solid fa-copy mr-1"></i>복사
                             </button>
                         </div>
@@ -2856,7 +2856,7 @@
             order.ordererPhone || "",
             address,
             items,
-            Number(order.finalTotal || 0)
+            order.shippingMemo || ""
         ].map(value => String(value).replace(/[\t\r\n]+/g, " ")).join("\t");
     }
 
