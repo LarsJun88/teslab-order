@@ -447,8 +447,8 @@
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
                         <div>
-                            <span class="text-[10px] font-bold text-slate-400 block uppercase">총 주문 건수</span>
-                            <span class="text-xl font-extrabold text-slate-800" id="stat-total-orders">0건</span>
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">총 주문자 수</span>
+                            <span class="text-xl font-extrabold text-slate-800" id="stat-total-orders">0명</span>
                         </div>
                         <i class="fa-solid fa-clipboard-list text-indigo-500 text-xl bg-indigo-50 p-2.5 rounded-lg"></i>
                     </div>
@@ -473,6 +473,14 @@
                         </div>
                         <i class="fa-solid fa-hourglass-half text-rose-500 text-xl bg-rose-50 p-2.5 rounded-lg"></i>
                     </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
+                        <h3 class="font-bold text-slate-900 text-sm">주문 상태별 건수</h3>
+                        <p class="text-[11px] text-slate-400">실제 주문 건 기준, 배송완료 포함</p>
+                    </div>
+                    <div id="order-status-counts" class="grid grid-cols-2 sm:grid-cols-5 gap-2" aria-live="polite"></div>
                 </div>
 
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -2738,9 +2746,9 @@
                         <p class="text-slate-700 truncate font-semibold" title="${order.addressBasic || ''} ${order.addressDetail || ''}">[${order.postalCode || '-'}] ${order.addressBasic || ''} ${order.addressDetail || ''}</p>
                         <p class="text-[10px] text-amber-600 italic truncate" title="${order.shippingMemo || ''}">메모: ${order.shippingMemo || '없음'}</p>
                     </td>
-                    <td class="p-3 text-center space-y-2 max-w-[170px]">
+                    <td class="p-3 text-center space-y-2 min-w-[210px]">
                         <div class="flex items-stretch gap-1">
-                            <select onchange="updateOrderStatus('${order.orderId}', this.value)" class="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-[11px] font-bold focus:border-indigo-500 bg-white">
+                            <select onchange="updateOrderStatus('${order.orderId}', this.value)" aria-label="주문 상태" class="w-[6.5rem] shrink-0 rounded border border-slate-200 px-2 py-1 text-[11px] font-bold whitespace-nowrap focus:border-indigo-500 bg-white">
                             <option value="입금대기" ${order.status === "입금대기" ? "selected" : ""}>입금대기</option>
                             <option value="입금완료" ${order.status === "입금완료" ? "selected" : ""}>입금완료</option>
                             <option value="배송준비" ${order.status === "배송준비" ? "selected" : ""}>배송준비</option>
@@ -2781,15 +2789,44 @@
     }
 
     function updateOrderSummaryStats(orders) {
-        const totalCount = orders.length;
+        const uniqueOrdererCount = new Set(orders.map((order, index) => {
+            const savedKey = String(order.orderLookupKey || '').trim();
+            if (savedKey) return savedKey;
+
+            const name = normalizeLookupName(order.ordererName);
+            const phone = normalizePhoneDigits(order.ordererPhone);
+            return name || phone ? name + '_' + phone : 'unknown_' + (order.orderId || index);
+        })).size;
         const totalSum = orders.reduce((acc, order) => acc + Number(order.finalTotal || 0), 0);
         const islandCount = orders.filter(order => order.isIslandShipping).length;
         const pendingCount = orders.filter(order => order.status === "입금대기").length;
 
-        document.getElementById('stat-total-orders').textContent = `${totalCount}건`;
-        document.getElementById('stat-total-sales').textContent = `${totalSum.toLocaleString()}원`;
-        document.getElementById('stat-island-count').textContent = `${islandCount}건`;
-        document.getElementById('stat-pending-orders').textContent = `${pendingCount}건`;
+        document.getElementById('stat-total-orders').textContent = uniqueOrdererCount.toLocaleString() + '명';
+        document.getElementById('stat-total-sales').textContent = totalSum.toLocaleString() + '원';
+        document.getElementById('stat-island-count').textContent = islandCount.toLocaleString() + '건';
+        document.getElementById('stat-pending-orders').textContent = pendingCount.toLocaleString() + '건';
+        renderOrderStatusCounts(orders);
+    }
+
+    function renderOrderStatusCounts(orders) {
+        const container = document.getElementById('order-status-counts');
+        if (!container) return;
+
+        const statuses = [
+            { name: '입금대기', className: 'bg-rose-50 text-rose-700 border-rose-100' },
+            { name: '입금완료', className: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+            { name: '배송준비', className: 'bg-sky-50 text-sky-700 border-sky-100' },
+            { name: '배송중', className: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+            { name: '배송완료', className: 'bg-slate-100 text-slate-700 border-slate-200' }
+        ];
+
+        container.innerHTML = statuses.map(status => {
+            const count = orders.filter(order => order.status === status.name).length;
+            return '<div class="border rounded-lg px-3 py-2 ' + status.className + ' flex items-center justify-between gap-2">' +
+                '<span class="text-xs font-bold whitespace-nowrap">' + status.name + '</span>' +
+                '<strong class="text-sm font-black">' + count.toLocaleString() + '건</strong>' +
+                '</div>';
+        }).join('');
     }
 
     function renderAdminOrdersUI(orders) {
