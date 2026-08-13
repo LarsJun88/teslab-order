@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>롸쓰의 테슬랩 - 관리자</title>
     <script>
@@ -27,9 +27,24 @@
     <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 
     <style>
+        html {
+            width: 100%;
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+        }
         body {
             font-family: 'Inter', 'Noto Sans KR', sans-serif;
             background-color: #f1f5f9;
+            width: 100%;
+            overflow-x: clip;
+        }
+
+        @media (max-width: 767px) {
+            input,
+            select,
+            textarea {
+                font-size: 16px !important;
+            }
         }
         .tab-active {
             border-bottom-color: #4f46e5;
