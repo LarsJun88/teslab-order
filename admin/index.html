@@ -447,8 +447,8 @@
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
                         <div>
-                            <span class="text-[10px] font-bold text-slate-400 block uppercase">총 주문자 수</span>
-                            <span class="text-xl font-extrabold text-slate-800" id="stat-total-orders">0명</span>
+                            <span class="text-[10px] font-bold text-slate-400 block uppercase">총 주문 건수</span>
+                            <span class="text-xl font-extrabold text-slate-800" id="stat-total-orders">0건</span>
                         </div>
                         <i class="fa-solid fa-clipboard-list text-indigo-500 text-xl bg-indigo-50 p-2.5 rounded-lg"></i>
                     </div>
@@ -2789,19 +2789,12 @@
     }
 
     function updateOrderSummaryStats(orders) {
-        const uniqueOrdererCount = new Set(orders.map((order, index) => {
-            const savedKey = String(order.orderLookupKey || '').trim();
-            if (savedKey) return savedKey;
-
-            const name = normalizeLookupName(order.ordererName);
-            const phone = normalizePhoneDigits(order.ordererPhone);
-            return name || phone ? name + '_' + phone : 'unknown_' + (order.orderId || index);
-        })).size;
+        const totalCount = orders.length;
         const totalSum = orders.reduce((acc, order) => acc + Number(order.finalTotal || 0), 0);
         const islandCount = orders.filter(order => order.isIslandShipping).length;
         const pendingCount = orders.filter(order => order.status === "입금대기").length;
 
-        document.getElementById('stat-total-orders').textContent = uniqueOrdererCount.toLocaleString() + '명';
+        document.getElementById('stat-total-orders').textContent = totalCount.toLocaleString() + '건';
         document.getElementById('stat-total-sales').textContent = totalSum.toLocaleString() + '원';
         document.getElementById('stat-island-count').textContent = islandCount.toLocaleString() + '건';
         document.getElementById('stat-pending-orders').textContent = pendingCount.toLocaleString() + '건';
