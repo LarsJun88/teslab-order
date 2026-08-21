@@ -504,7 +504,7 @@
                             <h3 id="ready-to-ship-title" class="font-bold text-slate-900 text-sm flex items-center gap-2">
                                 <i class="fa-solid fa-boxes-stacked text-indigo-600"></i> 발송 준비 품목 수량
                             </h3>
-                            <p class="text-[11px] text-slate-400 mt-1">입금완료와 배송준비 주문만 합산합니다. 배송중, 배송완료, 입금대기는 제외됩니다.</p>
+                            <p class="text-[11px] text-slate-400 mt-1">입금완료와 배송준비 주문만 상품별로 묶어 합산합니다. 배송중, 배송완료, 입금대기는 제외됩니다.</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold">
                             <span class="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-indigo-700">대상 주문 <strong id="ready-to-ship-order-count" class="text-sm">0건</strong></span>
@@ -2864,7 +2864,7 @@
 
         const readyStatuses = new Set(['입금완료', '배송준비']);
         const readyOrders = (Array.isArray(orders) ? orders : []).filter(order => readyStatuses.has(order.status));
-        const itemsByOption = new Map();
+        const itemsByProduct = new Map();
         let totalQuantity = 0;
 
         readyOrders.forEach(order => {
@@ -2872,31 +2872,53 @@
                 const quantity = Math.max(0, Number(item.quantity || 0));
                 if (quantity === 0) return;
 
-                const itemName = String(item.optionName || item.optionValue || '미분류 품목').trim() || '미분류 품목';
-                itemsByOption.set(itemName, (itemsByOption.get(itemName) || 0) + quantity);
+                const product = products.find(candidate => candidate.id === item.productId);
+                const rawItemName = normalizeOptionLabel(item.optionName);
+                const rawOptionName = normalizeOptionLabel(item.optionValue);
+                const nameMatch = rawItemName.match(/^(.*)\s+\((.*)\)$/);
+                const productName = normalizeOptionLabel(product?.name) || (nameMatch ? nameMatch[1].trim() : rawItemName) || '미분류 품목';
+                const optionName = rawOptionName || (nameMatch ? normalizeOptionLabel(nameMatch[2]) : '') || '기본 옵션';
+                const productRow = itemsByProduct.get(productName) || { name: productName, options: new Map(), totalQuantity: 0 };
+
+                productRow.options.set(optionName, (productRow.options.get(optionName) || 0) + quantity);
+                productRow.totalQuantity += quantity;
+                itemsByProduct.set(productName, productRow);
                 totalQuantity += quantity;
             });
         });
 
         const paidCount = readyOrders.filter(order => order.status === '입금완료').length;
         const preparingCount = readyOrders.filter(order => order.status === '배송준비').length;
-        const itemRows = [...itemsByOption.entries()]
-            .map(([name, quantity]) => ({ name, quantity }))
-            .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name, 'ko'));
+        const productRows = [...itemsByProduct.values()]
+            .map(productRow => ({
+                ...productRow,
+                optionRows: [...productRow.options.entries()]
+                    .map(([name, quantity]) => ({ name, quantity }))
+                    .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
         orderCountElement.textContent = `${readyOrders.length.toLocaleString()}건`;
         itemCountElement.textContent = `${totalQuantity.toLocaleString()}개`;
         statusSummary.textContent = `입금완료 ${paidCount.toLocaleString()}건 · 배송준비 ${preparingCount.toLocaleString()}건`;
 
-        if (itemRows.length === 0) {
+        if (productRows.length === 0) {
             list.innerHTML = '<p class="col-span-full border-t border-slate-100 py-4 text-center text-xs font-medium text-slate-400">발송 준비 중인 품목이 없습니다.</p>';
             return;
         }
 
-        list.innerHTML = itemRows.map(row => (
-            '<div class="flex min-w-0 items-center justify-between gap-3 border-t border-slate-100 py-2.5 text-xs">' +
-                '<span class="min-w-0 truncate font-semibold text-slate-700" title="' + escapeHtml(row.name) + '">' + escapeHtml(row.name) + '</span>' +
-                '<strong class="shrink-0 text-sm font-black text-indigo-700">' + row.quantity.toLocaleString() + '개</strong>' +
+        list.innerHTML = productRows.map(productRow => (
+            '<div class="min-w-0 border-t border-slate-100 py-3 text-xs">' +
+                '<div class="flex items-center justify-between gap-3">' +
+                    '<strong class="min-w-0 truncate text-sm font-extrabold text-slate-800" title="' + escapeHtml(productRow.name) + '">' + escapeHtml(productRow.name) + '</strong>' +
+                    '<strong class="shrink-0 text-sm font-black text-indigo-700">' + productRow.totalQuantity.toLocaleString() + '개</strong>' +
+                '</div>' +
+                '<div class="mt-1.5 space-y-1">' + productRow.optionRows.map(optionRow => (
+                    '<div class="flex min-w-0 items-center justify-between gap-3 pl-2 text-[11px]">' +
+                        '<span class="min-w-0 truncate text-slate-500" title="' + escapeHtml(optionRow.name) + '">· ' + escapeHtml(optionRow.name) + '</span>' +
+                        '<span class="shrink-0 font-bold text-slate-600">' + optionRow.quantity.toLocaleString() + '개</span>' +
+                    '</div>'
+                )).join('') + '</div>' +
             '</div>'
         )).join('');
     }
