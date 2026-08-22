@@ -254,6 +254,98 @@ function normalizeOptionLabel(option) {
   return String(option || "").replace(/\s*\([+-]\s*[\d,]+원\)\s*$/, "").trim();
 }
 
+function getProductOptions(product) {
+  const options = Array.isArray(product?.options) ? product.options : [];
+  return options.length > 0 ? options.map((option) => String(option || "").trim()).filter(Boolean) : ["기본형"];
+}
+
+function getProductOptionStocks(product) {
+  const source = product?.optionStocks;
+  if (!source || typeof source !== "object" || Array.isArray(source)) return {};
+
+  return Object.fromEntries(
+    Object.entries(source).map(([option, stock]) => [
+      String(option),
+      Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(Number(stock) || 0)))
+    ])
+  );
+}
+
+function hasConfiguredOptionStocks(product) {
+  const optionStocks = getProductOptionStocks(product);
+  return getProductOptions(product).every((option) => Object.prototype.hasOwnProperty.call(optionStocks, option));
+}
+
+function getOptionStock(product, optionValue) {
+  const option = String(optionValue || "").trim();
+  const optionStocks = getProductOptionStocks(product);
+  return Object.prototype.hasOwnProperty.call(optionStocks, option)
+    ? optionStocks[option]
+    : getProductStock(product);
+}
+
+function resolveOrderItemOptionValue(product, item) {
+  const options = getProductOptions(product);
+  const providedOption = String(item?.optionValue || "").trim();
+  if (options.includes(providedOption)) return providedOption;
+
+  const optionLabel = String(item?.optionName || "");
+  return options.find((option) => optionLabel.includes(normalizeOptionLabel(option))) || providedOption;
+}
+
+function buildInventoryRequests(cart, catalogProducts) {
+  const requests = new Map();
+
+  for (const item of Array.isArray(cart) ? cart : []) {
+    const productId = String(item?.productId || "");
+    const product = catalogProducts.find((candidate) => candidate.id === productId);
+    const optionValue = resolveOrderItemOptionValue(product, item);
+    const useOptionStock = product && hasConfiguredOptionStocks(product) && getProductOptions(product).includes(optionValue);
+    const key = useOptionStock ? productId + "\u0000" + optionValue : productId;
+    const request = requests.get(key) || { key, productId, product, optionValue: useOptionStock ? optionValue : "", quantity: 0 };
+
+    request.quantity += Number(item?.quantity || 0);
+    requests.set(key, request);
+  }
+
+  return requests;
+}
+
+function getInventoryAvailableStock(request) {
+  if (!request?.product) return 0;
+  return request.optionValue
+    ? getOptionStock(request.product, request.optionValue)
+    : getProductStock(request.product);
+}
+
+function applyInventoryChanges(catalogProducts, inventoryChanges) {
+  const changesByProduct = new Map();
+
+  for (const change of inventoryChanges) {
+    if (!change?.productId || !Number(change.delta)) continue;
+    const changes = changesByProduct.get(change.productId) || [];
+    changes.push(change);
+    changesByProduct.set(change.productId, changes);
+  }
+
+  return catalogProducts.map((product) => {
+    const changes = changesByProduct.get(product.id) || [];
+    if (changes.length === 0) return product;
+
+    if (hasConfiguredOptionStocks(product)) {
+      const optionStocks = { ...getProductOptionStocks(product) };
+      changes.forEach((change) => {
+        if (!change.optionValue) return;
+        optionStocks[change.optionValue] = Math.max(0, Math.min(MAX_PRODUCT_STOCK, getOptionStock(product, change.optionValue) - change.delta));
+      });
+      return { ...product, optionStocks };
+    }
+
+    const stockDelta = changes.reduce((sum, change) => sum + change.delta, 0);
+    return { ...product, stock: Math.max(0, Math.min(MAX_PRODUCT_STOCK, getProductStock(product) - stockDelta)) };
+  });
+}
+
 function normalizeEditableText(value, fieldName, required = false) {
   const normalized = String(value ?? "").trim();
   if (required && !normalized) throw new HttpsError("invalid-argument", fieldName + "을(를) 입력해 주세요.");
@@ -397,14 +489,12 @@ exports.submitOrderWithInventory = onCall(
 
       const catalogData = catalogSnap.data() || {};
       const catalogProducts = Array.isArray(catalogData.products) ? catalogData.products : [];
-      const requestedByProduct = new Map();
-
       for (const item of order.cart) {
         const productId = String(item.productId);
         const quantity = Number(item.quantity);
-        const optionValue = String(item.optionValue || "").trim();
         const product = catalogProducts.find((candidate) => candidate.id === productId);
-        const options = Array.isArray(product?.options) && product.options.length > 0 ? product.options : ["기본형"];
+        const optionValue = resolveOrderItemOptionValue(product, item);
+        const options = getProductOptions(product);
         const expectedUnitPrice = product ? getProductUnitPrice(product, optionValue) : -1;
 
         if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || !options.includes(optionValue) ||
@@ -412,41 +502,37 @@ exports.submitOrderWithInventory = onCall(
           throw new HttpsError("failed-precondition", "상품 가격 또는 옵션이 변경되었습니다. 장바구니를 다시 확인해 주세요.");
         }
 
-        requestedByProduct.set(productId, (requestedByProduct.get(productId) || 0) + quantity);
       }
 
-      for (const [productId, requestedQuantity] of requestedByProduct) {
-        const product = catalogProducts.find((item) => item.id === productId);
-        const availableStock = product ? getProductStock(product) : 0;
+      const requestedInventory = buildInventoryRequests(order.cart, catalogProducts);
 
-        if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || availableStock < requestedQuantity) {
+      for (const requestItem of requestedInventory.values()) {
+        const availableStock = getInventoryAvailableStock(requestItem);
+
+        if (!requestItem.product || isProductHidden(requestItem.product) || isProductManuallySoldOut(requestItem.product) ||
+            (requestItem.optionValue && isOptionManuallySoldOut(requestItem.optionValue)) || availableStock < requestItem.quantity) {
           throw new HttpsError(
             "failed-precondition",
             "재고가 부족하여 주문을 완료할 수 없습니다.",
             {
               reason: "insufficient-stock",
-              productId,
-              productName: product?.name || "판매 종료 상품",
+              productId: requestItem.productId,
+              productName: requestItem.product ? requestItem.product.name + (requestItem.optionValue ? " (" + normalizeOptionLabel(requestItem.optionValue) + ")" : "") : "판매 종료 상품",
               availableStock,
-              requestedQuantity
+              requestedQuantity: requestItem.quantity
             }
           );
         }
       }
 
-      const updatedProducts = catalogProducts.map((product) => {
-        const requestedQuantity = requestedByProduct.get(product.id) || 0;
-        if (requestedQuantity === 0) return product;
-
-        return {
-          ...product,
-          stock: getProductStock(product) - requestedQuantity
-        };
-      });
+      const updatedProducts = applyInventoryChanges(
+        catalogProducts,
+        [...requestedInventory.values()].map((requestItem) => ({ ...requestItem, delta: requestItem.quantity }))
+      );
 
       const normalizedCart = order.cart.map((item) => {
         const product = catalogProducts.find((candidate) => candidate.id === String(item.productId));
-        const optionValue = String(item.optionValue || "").trim();
+        const optionValue = resolveOrderItemOptionValue(product, item);
         return {
           ...item,
           optionValue,
@@ -477,8 +563,8 @@ exports.submitOrderWithInventory = onCall(
         orderId: order.orderId,
         remainingStock: Object.fromEntries(
           updatedProducts
-            .filter((product) => requestedByProduct.has(product.id))
-            .map((product) => [product.id, getProductStock(product)])
+            .filter((product) => [...requestedInventory.values()].some((requestItem) => requestItem.productId === product.id))
+            .map((product) => [product.id, { stock: getProductStock(product), optionStocks: getProductOptionStocks(product) }])
         )
       };
     });
@@ -545,29 +631,41 @@ exports.updateOrderWithInventory = onCall(
 
         const product = catalogProducts.find((item) => item.id === productId);
         const optionValue = String(draftItem?.optionValue || "").trim();
-        const options = Array.isArray(product?.options) && product.options.length > 0 ? product.options : ["기본형"];
+        const options = getProductOptions(product);
         if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || !options.includes(optionValue) || isOptionManuallySoldOut(optionValue)) throw new HttpsError("failed-precondition", "추가할 수 없는 품목 또는 옵션입니다.");
         nextCart.push({ productId, optionName: String(product.name) + " (" + normalizeOptionLabel(optionValue) + ")", optionValue, originalUnitPrice: getProductOriginalUnitPrice(product, optionValue), unitPrice: getProductUnitPrice(product, optionValue), quantity });
       }
 
-      const originalByProduct = new Map();
-      const nextByProduct = new Map();
-      originalCart.forEach((item) => originalByProduct.set(String(item?.productId || ""), (originalByProduct.get(String(item?.productId || "")) || 0) + Number(item?.quantity || 0)));
-      nextCart.forEach((item) => nextByProduct.set(item.productId, (nextByProduct.get(item.productId) || 0) + item.quantity));
-      const deltaByProduct = new Map();
-      new Set([...originalByProduct.keys(), ...nextByProduct.keys()]).forEach((productId) => deltaByProduct.set(productId, (nextByProduct.get(productId) || 0) - (originalByProduct.get(productId) || 0)));
+      const originalInventory = buildInventoryRequests(originalCart, catalogProducts);
+      const nextInventory = buildInventoryRequests(nextCart, catalogProducts);
+      const inventoryChanges = new Map();
 
-      for (const [productId, delta] of deltaByProduct) {
-        if (delta <= 0) continue;
-        const product = catalogProducts.find((item) => item.id === productId);
-        const availableStock = product ? getProductStock(product) : 0;
-        if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || availableStock < delta) throw new HttpsError("failed-precondition", "재고가 부족하여 주문을 수정할 수 없습니다.", { reason: "insufficient-stock", productId, productName: product?.name || "판매 종료 상품", availableStock, requestedQuantity: delta });
+      for (const inventoryKey of new Set([...originalInventory.keys(), ...nextInventory.keys()])) {
+        const originalRequest = originalInventory.get(inventoryKey);
+        const nextRequest = nextInventory.get(inventoryKey);
+        const sourceRequest = nextRequest || originalRequest;
+        inventoryChanges.set(inventoryKey, {
+          ...sourceRequest,
+          delta: (nextRequest?.quantity || 0) - (originalRequest?.quantity || 0)
+        });
       }
 
-      const updatedProducts = catalogProducts.map((product) => {
-        const delta = deltaByProduct.get(product.id) || 0;
-        return delta === 0 ? product : { ...product, stock: Math.max(0, Math.min(MAX_PRODUCT_STOCK, getProductStock(product) - delta)) };
-      });
+      for (const change of inventoryChanges.values()) {
+        const { product, productId, optionValue, delta } = change;
+        if (delta <= 0) continue;
+        const availableStock = getInventoryAvailableStock(change);
+        if (!product || isProductHidden(product) || isProductManuallySoldOut(product) || (optionValue && isOptionManuallySoldOut(optionValue)) || availableStock < delta) {
+          throw new HttpsError("failed-precondition", "재고가 부족하여 주문을 수정할 수 없습니다.", {
+            reason: "insufficient-stock",
+            productId,
+            productName: product ? product.name + (optionValue ? " (" + normalizeOptionLabel(optionValue) + ")" : "") : "판매 종료 상품",
+            availableStock,
+            requestedQuantity: delta
+          });
+        }
+      }
+
+      const updatedProducts = applyInventoryChanges(catalogProducts, [...inventoryChanges.values()]);
       const productTotal = nextCart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       const shippingFee = 4000 + (normalizedDetails.isIslandShipping ? 3000 : 0);
       const publicOrderUpdate = {
@@ -580,9 +678,17 @@ exports.updateOrderWithInventory = onCall(
         ordererPhoneDigits: normalizePhoneDigits(normalizedDetails.ordererPhone),
         orderLookupKey: buildOrderLookupKey(normalizedDetails.ordererName, normalizedDetails.ordererPhone)
       };
-      if (Array.from(deltaByProduct.values()).some((delta) => delta !== 0)) transaction.update(catalogRef, { products: updatedProducts });
+      if ([...inventoryChanges.values()].some((change) => change.delta !== 0)) transaction.update(catalogRef, { products: updatedProducts });
       transaction.update(orderRef, { ...publicOrderUpdate, adminUpdatedAt: FieldValue.serverTimestamp(), adminUpdatedBy: request.auth.uid });
-      return { orderId, order: publicOrderUpdate, remainingStock: Object.fromEntries(updatedProducts.filter((product) => deltaByProduct.has(product.id)).map((product) => [product.id, getProductStock(product)])) };
+      return {
+        orderId,
+        order: publicOrderUpdate,
+        remainingStock: Object.fromEntries(
+          updatedProducts
+            .filter((product) => [...inventoryChanges.values()].some((change) => change.productId === product.id))
+            .map((product) => [product.id, { stock: getProductStock(product), optionStocks: getProductOptionStocks(product) }])
+        )
+      };
     });
   }
 );

@@ -882,9 +882,9 @@
                 <span class="text-[10px] text-slate-400">할인 금액을 입력하면 고객 화면에 할인가와 할인율이 표시됩니다.</span>
             </div>
             <div>
-                <label class="block font-bold text-slate-600 mb-1">재고 수량 (0~999)</label>
+                <label class="block font-bold text-slate-600 mb-1">기본 재고 수량 (0~999)</label>
                 <input type="number" id="edit-prod-stock" min="0" max="999" step="1" value="999" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500">
-                <span class="text-[10px] text-slate-400">0개가 되면 구매 페이지에서 자동 품절 처리됩니다.</span>
+                <span class="text-[10px] text-slate-400">옵션별 재고를 설정하지 않은 기존 상품에 적용됩니다.</span>
             </div>
 
             <div class="space-y-1">
@@ -917,7 +917,15 @@
             </div>
             <div>
                 <label class="block font-bold text-slate-600 mb-1">옵션 목록</label>
-                <textarea id="edit-prod-options" rows="3" placeholder="블랙&#10;레드&#10;신형 (+5,000원)&#10;할인형 (-2,000원)" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono"></textarea>
+                <textarea id="edit-prod-options" rows="3" placeholder="블랙&#10;레드&#10;신형 (+5,000원)&#10;할인형 (-2,000원)" oninput="renderProductOptionStockInputs()" class="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-indigo-500 font-mono"></textarea>
+            </div>
+            <div class="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+                <div class="flex items-center justify-between gap-3">
+                    <label class="font-bold text-slate-700">옵션별 재고 수량</label>
+                    <span class="text-[10px] font-medium text-indigo-600">옵션마다 0~999개</span>
+                </div>
+                <div id="edit-prod-option-stock-list" class="space-y-2"></div>
+                <p class="text-[10px] text-slate-500">0개로 저장한 옵션만 자동 품절됩니다. 옵션을 추가하거나 바꾸면 아래 목록도 함께 갱신됩니다.</p>
             </div>
 
             <div class="space-y-1 mt-3">
@@ -1491,14 +1499,78 @@
         return Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(stock)));
     }
 
+    function getProductOptions(product) {
+        const options = Array.isArray(product?.options) ? product.options : [];
+        return options.length > 0 ? options.map(option => String(option || '').trim()).filter(Boolean) : ['기본형'];
+    }
+
+    function getProductOptionStocks(product) {
+        const source = product?.optionStocks;
+        if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+
+        return Object.fromEntries(
+            Object.entries(source).map(([option, stock]) => [
+                String(option),
+                Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(Number(stock) || 0)))
+            ])
+        );
+    }
+
+    function hasConfiguredOptionStocks(product) {
+        const optionStocks = getProductOptionStocks(product);
+        return getProductOptions(product).every(option => Object.prototype.hasOwnProperty.call(optionStocks, option));
+    }
+
+    function getOptionStock(product, optionValue) {
+        const optionStocks = getProductOptionStocks(product);
+        const option = String(optionValue || '').trim();
+
+        return Object.prototype.hasOwnProperty.call(optionStocks, option)
+            ? optionStocks[option]
+            : getProductStock(product);
+    }
+
+    function getProductDisplayStock(product) {
+        if (!hasConfiguredOptionStocks(product)) return getProductStock(product);
+        return getProductOptions(product).reduce((sum, option) => sum + getOptionStock(product, option), 0);
+    }
+
     function getCartProductQuantity(productId, cartItems = cart) {
         return cartItems
             .filter(item => item.productId === productId)
             .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     }
 
-    function getAvailableProductStock(product, cartItems = cart) {
+    function getCartOptionQuantity(productId, optionValue, cartItems = cart) {
+        return cartItems
+            .filter(item => item.productId === productId && String(item.optionValue || '').trim() === String(optionValue || '').trim())
+            .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    }
+
+    function getAvailableProductStock(product, optionValue = '', cartItems = cart) {
+        const option = String(optionValue || '').trim();
+
+        if (hasConfiguredOptionStocks(product) && getProductOptions(product).includes(option)) {
+            return Math.max(0, getOptionStock(product, option) - getCartOptionQuantity(product?.id, option, cartItems));
+        }
+
         return Math.max(0, getProductStock(product) - getCartProductQuantity(product?.id, cartItems));
+    }
+
+    function updateDetailStockDisplay(product = activeProduct, optionValue = '') {
+        const stockDisplay = document.getElementById('detail-stock-display');
+        if (!stockDisplay || !product) return;
+
+        const option = String(optionValue || '').trim();
+        const requiresOptionSelection = hasConfiguredOptionStocks(product) && !option;
+        const stock = requiresOptionSelection
+            ? null
+            : (option ? getAvailableProductStock(product, option) : getProductDisplayStock(product));
+
+        stockDisplay.textContent = requiresOptionSelection ? '옵션 선택' : stock === 0 ? '품절' : `${stock}개`;
+        stockDisplay.className = requiresOptionSelection || stock > 2
+            ? 'font-extrabold text-emerald-600'
+            : 'font-extrabold text-rose-600';
     }
 
     function isProductHidden(product) {
@@ -1506,9 +1578,15 @@
     }
 
     function isProductSoldOut(product) {
-        return isProductHidden(product) || getProductStock(product) === 0 ||
+        return isProductHidden(product) || getProductDisplayStock(product) === 0 ||
             isSoldOutText(product?.name) ||
             isSoldOutText(product?.itemNo);
+    }
+
+    function isOptionSoldOut(product, optionValue) {
+        const option = String(optionValue || '').trim();
+        return isProductSoldOut(product) || isSoldOutText(option) ||
+            (hasConfiguredOptionStocks(product) && getOptionStock(product, option) === 0);
     }
 
     function getProductThumbnailUrl(product) {
@@ -1644,7 +1722,7 @@
     function isCartItemSoldOut(item) {
         const product = products.find(prod => prod.id === item.productId);
         if (!product) return false;
-        if (isProductSoldOut(product)) return true;
+        if (isOptionSoldOut(product, item.optionValue)) return true;
 
         const cartLabel = normalizeOptionLabel(item.optionName);
         const options = Array.isArray(product.options) ? product.options : [];
@@ -1659,21 +1737,29 @@
     }
 
     function findInventoryIssue(cartItems = cart, catalogProducts = products) {
-        const requestedByProduct = new Map();
+        const requestedByInventory = new Map();
 
         cartItems.forEach(item => {
             const productId = String(item.productId || '');
-            requestedByProduct.set(productId, (requestedByProduct.get(productId) || 0) + Number(item.quantity || 0));
+            const product = catalogProducts.find(candidate => candidate.id === productId);
+            const optionValue = String(item.optionValue || '').trim();
+            const useOptionStock = product && hasConfiguredOptionStocks(product) && getProductOptions(product).includes(optionValue);
+            const key = useOptionStock ? `${productId}\u0000${optionValue}` : productId;
+            const inventoryItem = requestedByInventory.get(key) || { product, productId, optionValue: useOptionStock ? optionValue : '', quantity: 0 };
+            inventoryItem.quantity += Number(item.quantity || 0);
+            requestedByInventory.set(key, inventoryItem);
         });
 
-        for (const [productId, requestedQuantity] of requestedByProduct) {
-            const product = catalogProducts.find(item => item.id === productId);
-            const availableStock = product ? getProductStock(product) : 0;
+        for (const inventoryItem of requestedByInventory.values()) {
+            const { product, productId, optionValue, quantity: requestedQuantity } = inventoryItem;
+            const availableStock = product
+                ? (optionValue ? getOptionStock(product, optionValue) : getProductStock(product))
+                : 0;
 
-            if (!product || isProductSoldOut(product) || requestedQuantity > availableStock) {
+            if (!product || isProductSoldOut(product) || (optionValue && isOptionSoldOut(product, optionValue)) || requestedQuantity > availableStock) {
                 return {
                     productId,
-                    productName: product?.name || '판매 종료 상품',
+                    productName: product ? `${product.name}${optionValue ? ` (${normalizeOptionLabel(optionValue)})` : ''}` : '판매 종료 상품',
                     availableStock,
                     requestedQuantity
                 };
@@ -1687,15 +1773,32 @@
         const issue = findInventoryIssue(cartItems, products);
         if (issue) return issue;
 
-        const requestedByProduct = new Map();
+        const requestedByInventory = new Map();
         cartItems.forEach(item => {
-            requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) || 0) + Number(item.quantity || 0));
+            const product = products.find(candidate => candidate.id === item.productId);
+            const optionValue = String(item.optionValue || '').trim();
+            const useOptionStock = product && hasConfiguredOptionStocks(product) && getProductOptions(product).includes(optionValue);
+            const key = useOptionStock ? `${item.productId}\u0000${optionValue}` : item.productId;
+            const inventoryItem = requestedByInventory.get(key) || { productId: item.productId, optionValue: useOptionStock ? optionValue : '', quantity: 0 };
+            inventoryItem.quantity += Number(item.quantity || 0);
+            requestedByInventory.set(key, inventoryItem);
         });
 
-        products = products.map(product => ({
-            ...product,
-            stock: getProductStock(product) - (requestedByProduct.get(product.id) || 0)
-        }));
+        products = products.map(product => {
+            const relevantItems = [...requestedByInventory.values()].filter(item => item.productId === product.id);
+            if (relevantItems.length === 0) return product;
+
+            if (hasConfiguredOptionStocks(product)) {
+                const optionStocks = { ...getProductOptionStocks(product) };
+                relevantItems.forEach(item => {
+                    if (item.optionValue) optionStocks[item.optionValue] = Math.max(0, getOptionStock(product, item.optionValue) - item.quantity);
+                });
+                return { ...product, optionStocks };
+            }
+
+            const requestedQuantity = relevantItems.reduce((sum, item) => sum + item.quantity, 0);
+            return { ...product, stock: getProductStock(product) - requestedQuantity };
+        });
         localProducts = products;
         localStorage.setItem('teslap_products_cache', JSON.stringify(products));
         renderProductsUI();
@@ -1716,15 +1819,9 @@
         if (activeProduct) {
             activeProduct = products.find(product => product.id === activeProduct.id) || null;
             if (activeProduct) {
-                const stock = getProductStock(activeProduct);
-                const stockDisplay = document.getElementById('detail-stock-display');
-                if (stockDisplay) {
-                    stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
-                    stockDisplay.className = stock <= 2
-                        ? 'font-extrabold text-rose-600'
-                        : 'font-extrabold text-emerald-600';
-                }
-                const maxDetailQuantity = Math.max(1, getAvailableProductStock(activeProduct));
+                const selectedOption = document.getElementById('detail-opt-select')?.value || '';
+                updateDetailStockDisplay(activeProduct, selectedOption);
+                const maxDetailQuantity = Math.max(1, getAvailableProductStock(activeProduct, selectedOption));
                 activeDetailQty = Math.min(activeDetailQty, maxDetailQuantity);
                 document.getElementById('detail-qty-display').textContent = activeDetailQty;
                 calculateDetailMockPrice();
@@ -1845,7 +1942,7 @@
 
         listContainer.innerHTML = visibleProducts.map(prod => {
             const soldOut = isProductSoldOut(prod);
-            const stock = getProductStock(prod);
+            const stock = getProductDisplayStock(prod);
             const lowStock = stock > 0 && stock <= 5;
             const thumbnailUrl = getProductThumbnailUrl(prod);
             const safeName = escapeHtml(prod.name || '상품');
@@ -1891,12 +1988,6 @@
         document.getElementById('detail-title').textContent = prod.name || '';
         document.getElementById('detail-desc').textContent = prod.desc || '';
         document.getElementById('detail-price').innerHTML = renderProductPriceHtml(prod, false);
-        const stock = getProductStock(prod);
-        const stockDisplay = document.getElementById('detail-stock-display');
-        stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
-        stockDisplay.className = stock <= 2
-            ? 'font-extrabold text-rose-600'
-            : 'font-extrabold text-emerald-600';
         document.getElementById('detail-qty-display').textContent = activeDetailQty;
         const detailSpecTextEl = document.getElementById('detail-spec-text');
 
@@ -1920,10 +2011,11 @@
         const selectEl = document.getElementById('detail-opt-select');
         const opts = Array.isArray(prod.options) && prod.options.length > 0 ? prod.options : ["기본형"];
         selectEl.innerHTML = `<option value="">-- 옵션을 선택해 주세요 --</option>` + opts.map(opt => {
-            const soldOutOption = isProductSoldOut(prod) || isSoldOutText(opt);
+            const soldOutOption = isOptionSoldOut(prod, opt);
             const safeOpt = escapeHtml(opt);
             return `<option value="${safeOpt}" ${soldOutOption ? 'disabled' : ''}>${safeOpt}${soldOutOption && !isSoldOutText(opt) ? ' (품절)' : ''}</option>`;
         }).join('');
+        updateDetailStockDisplay(prod);
 
         const extraImgsContainer = document.getElementById('detail-extra-images');
 
@@ -2003,7 +2095,8 @@
         if (!activeProduct) return;
 
         const nextQuantity = Math.max(1, activeDetailQty + delta);
-        const availableStock = getAvailableProductStock(activeProduct);
+        const selectedOption = document.getElementById('detail-opt-select').value;
+        const availableStock = getAvailableProductStock(activeProduct, selectedOption);
 
         if (delta > 0 && nextQuantity > availableStock) {
             showToast(`⚠️ 현재 추가 가능한 재고는 ${availableStock}개입니다.`);
@@ -2020,8 +2113,8 @@
         if (!button || !activeProduct) return;
 
         const selectedVal = document.getElementById('detail-opt-select').value;
-        const availableStock = getAvailableProductStock(activeProduct);
-        const soldOut = isProductSoldOut(activeProduct) || isSoldOutText(selectedVal);
+        const availableStock = getAvailableProductStock(activeProduct, selectedVal);
+        const soldOut = isOptionSoldOut(activeProduct, selectedVal);
         const insufficientStock = activeDetailQty > availableStock;
 
         button.disabled = soldOut || insufficientStock;
@@ -2043,6 +2136,7 @@
         const cost = Math.max(0, getProductSalePrice(activeProduct) + extra) * activeDetailQty;
 
         document.getElementById('detail-total-cost').textContent = `${cost.toLocaleString()}원`;
+        updateDetailStockDisplay(activeProduct, selectedVal);
         updateDetailAddButtonState();
     };
 
@@ -2051,7 +2145,7 @@
 
         const selectedVal = document.getElementById('detail-opt-select').value;
 
-        if (isProductSoldOut(activeProduct) || isSoldOutText(selectedVal)) {
+        if (isOptionSoldOut(activeProduct, selectedVal)) {
             showToast("❌ 품절된 품목은 주문할 수 없습니다.");
             return;
         }
@@ -2061,7 +2155,7 @@
             return;
         }
 
-        const availableStock = getAvailableProductStock(activeProduct);
+        const availableStock = getAvailableProductStock(activeProduct, selectedVal);
         if (activeDetailQty > availableStock) {
             showToast(`❌ 재고가 부족합니다. 현재 추가 가능한 수량은 ${availableStock}개입니다.`);
             return;
@@ -2109,9 +2203,14 @@
 
         container.innerHTML = cart.map((item, idx) => {
             const product = products.find(prod => prod.id === item.productId);
-            const currentStock = product ? getProductStock(product) : 0;
-            const requestedProductQuantity = getCartProductQuantity(item.productId);
-            const stockIssue = !product || requestedProductQuantity > currentStock;
+            const usesOptionStock = product && hasConfiguredOptionStocks(product);
+            const currentStock = product
+                ? (usesOptionStock ? getOptionStock(product, item.optionValue) : getProductStock(product))
+                : 0;
+            const requestedQuantity = usesOptionStock
+                ? getCartOptionQuantity(item.productId, item.optionValue)
+                : getCartProductQuantity(item.productId);
+            const stockIssue = !product || requestedQuantity > currentStock;
             const soldOut = isCartItemSoldOut(item) || stockIssue;
 
             return `
@@ -2140,7 +2239,7 @@
         if (!item) return;
 
         const product = products.find(prod => prod.id === item.productId);
-        if (delta > 0 && (!product || getCartProductQuantity(item.productId) + delta > getProductStock(product))) {
+        if (delta > 0 && (!product || delta > getAvailableProductStock(product, item.optionValue))) {
             showToast(`⚠️ ${product?.name || '상품'} 재고가 부족합니다.`);
             return;
         }
@@ -3040,9 +3139,20 @@
     function applyRemainingStockInMemory(remainingStock) {
         if (!remainingStock || typeof remainingStock !== 'object') return;
 
-        products = products.map(product => Object.prototype.hasOwnProperty.call(remainingStock, product.id)
-            ? { ...product, stock: Number(remainingStock[product.id]) }
-            : product);
+        products = products.map(product => {
+            if (!Object.prototype.hasOwnProperty.call(remainingStock, product.id)) return product;
+
+            const inventory = remainingStock[product.id];
+            if (inventory && typeof inventory === 'object') {
+                return {
+                    ...product,
+                    stock: getProductStock({ stock: inventory.stock }),
+                    optionStocks: getProductOptionStocks({ optionStocks: inventory.optionStocks })
+                };
+            }
+
+            return { ...product, stock: Number(inventory) };
+        });
         localProducts = products;
         localStorage.setItem('teslap_products_cache', JSON.stringify(products));
         renderProductsUI();
@@ -3093,7 +3203,7 @@
 
             const product = getAdminOrderEditProduct(item.productId);
             const productOptions = ['<option value="">상품 선택</option>'].concat(selectableProducts.map(candidate => '<option value="' + escapeHtml(candidate.id) + '"' + (candidate.id === item.productId ? ' selected' : '') + '>' + escapeHtml(candidate.name) + '</option>')).join('');
-            const optionOptions = ['<option value="">옵션 선택</option>'].concat(product ? getAdminOrderEditOptions(product).filter(option => !isSoldOutText(option)).map(option => '<option value="' + escapeHtml(option) + '"' + (option === item.optionValue ? ' selected' : '') + '>' + escapeHtml(option) + '</option>') : []).join('');
+            const optionOptions = ['<option value="">옵션 선택</option>'].concat(product ? getAdminOrderEditOptions(product).filter(option => !isOptionSoldOut(product, option)).map(option => '<option value="' + escapeHtml(option) + '"' + (option === item.optionValue ? ' selected' : '') + '>' + escapeHtml(option) + '</option>') : []).join('');
             const unitPrice = getAdminOrderEditUnitPrice(item);
 
             return '<div class="flex flex-col gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">' +
@@ -3123,6 +3233,7 @@
             sourceIndex,
             productId: item.productId,
             optionName: item.optionName,
+            optionValue: item.optionValue || '',
             unitPrice: Number(item.unitPrice || 0),
             quantity: Number(item.quantity || 1)
         }));
@@ -3171,7 +3282,7 @@
         const product = getAdminOrderEditProduct(productId);
         if (!item) return;
         item.productId = productId;
-        item.optionValue = product ? (getAdminOrderEditOptions(product).find(option => !isSoldOutText(option)) || '') : '';
+        item.optionValue = product ? (getAdminOrderEditOptions(product).find(option => !isOptionSoldOut(product, option)) || '') : '';
         renderAdminOrderEditCart();
     };
 
@@ -3231,17 +3342,57 @@
     }
 
     function applyDemoInventoryChange(originalCart, nextCart) {
-        const originalByProduct = new Map();
-        const nextByProduct = new Map();
-        originalCart.forEach(item => originalByProduct.set(item.productId, (originalByProduct.get(item.productId) || 0) + Number(item.quantity || 0)));
-        nextCart.forEach(item => nextByProduct.set(item.productId, (nextByProduct.get(item.productId) || 0) + Number(item.quantity || 0)));
+        const buildInventoryRequests = items => {
+            const requests = new Map();
+
+            items.forEach(item => {
+                const productId = String(item.productId || '');
+                const product = getAdminOrderEditProduct(productId);
+                const options = product ? getProductOptions(product) : [];
+                const storedOption = String(item.optionValue || '').trim();
+                const optionValue = options.includes(storedOption)
+                    ? storedOption
+                    : options.find(option => normalizeOptionLabel(item.optionName).includes(normalizeOptionLabel(option))) || storedOption;
+                const usesOptionStock = product && hasConfiguredOptionStocks(product) && options.includes(optionValue);
+                const key = usesOptionStock ? `${productId}\u0000${optionValue}` : productId;
+                const request = requests.get(key) || { productId, optionValue: usesOptionStock ? optionValue : '', quantity: 0 };
+                request.quantity += Number(item.quantity || 0);
+                requests.set(key, request);
+            });
+
+            return requests;
+        };
+
+        const originalByInventory = buildInventoryRequests(originalCart);
+        const nextByInventory = buildInventoryRequests(nextCart);
         const remainingStock = {};
 
-        for (const productId of new Set([...originalByProduct.keys(), ...nextByProduct.keys()])) {
-            const delta = (nextByProduct.get(productId) || 0) - (originalByProduct.get(productId) || 0);
-            const product = getAdminOrderEditProduct(productId);
-            if (delta > 0 && (!product || isProductSoldOut(product) || getProductStock(product) < delta)) throw new Error('재고가 부족하여 주문을 수정할 수 없습니다.');
-            if (product && delta !== 0) remainingStock[productId] = Math.max(0, Math.min(MAX_PRODUCT_STOCK, getProductStock(product) - delta));
+        for (const key of new Set([...originalByInventory.keys(), ...nextByInventory.keys()])) {
+            const original = originalByInventory.get(key);
+            const next = nextByInventory.get(key);
+            const change = next || original;
+            const delta = Number(next?.quantity || 0) - Number(original?.quantity || 0);
+            const product = getAdminOrderEditProduct(change.productId);
+            const availableStock = product
+                ? (change.optionValue ? getOptionStock(product, change.optionValue) : getProductStock(product))
+                : 0;
+
+            if (delta > 0 && (!product || isOptionSoldOut(product, change.optionValue) || availableStock < delta)) {
+                throw new Error('재고가 부족하여 주문을 수정할 수 없습니다.');
+            }
+
+            if (!product || delta === 0) continue;
+
+            if (change.optionValue && hasConfiguredOptionStocks(product)) {
+                const current = remainingStock[product.id] || { stock: getProductStock(product), optionStocks: { ...getProductOptionStocks(product) } };
+                current.optionStocks[change.optionValue] = Math.max(0, Math.min(MAX_PRODUCT_STOCK, Number(current.optionStocks[change.optionValue] || 0) - delta));
+                remainingStock[product.id] = current;
+            } else {
+                const currentStock = typeof remainingStock[product.id] === 'number'
+                    ? remainingStock[product.id]
+                    : getProductStock(product);
+                remainingStock[product.id] = Math.max(0, Math.min(MAX_PRODUCT_STOCK, currentStock - delta));
+            }
         }
 
         applyRemainingStockInMemory(remainingStock);
@@ -3783,7 +3934,8 @@
         container.innerHTML = products.map((prod, idx) => {
             const thumbnailUrl = prod.thumbnailUrl || prod.img || '../assets/product-placeholder.svg';
             const thumbnailOptimized = isProductThumbnailOptimized(prod);
-            const stock = getProductStock(prod);
+            const stock = getProductDisplayStock(prod);
+            const optionStockManaged = hasConfiguredOptionStocks(prod);
             const hidden = isProductHidden(prod);
             const priceInfo = getProductPriceInfo(prod);
             const priceLabel = priceInfo.discountAmount > 0
@@ -3806,13 +3958,10 @@
                 </div>
 
                 <div class="flex flex-wrap justify-end gap-2 items-center shrink-0 w-full sm:w-auto">
-                    <label class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white pl-2 text-[10px] font-bold text-slate-500" title="0~999개 재고 입력">
-                        재고
-                        <input type="number" id="stock-input-${prod.id}" min="0" max="999" step="1" value="${stock}" class="w-16 border-0 bg-transparent px-1 py-1.5 text-center text-xs font-black text-slate-800 outline-none">
-                    </label>
-                    <button type="button" onclick="saveProductStock('${prod.id}')" title="재고 저장" class="w-9 h-9 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition">
-                        <i class="fa-solid fa-floppy-disk"></i>
-                    </button>
+                    ${optionStockManaged
+                        ? '<span class="rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-2 text-[10px] font-bold text-indigo-700" title="수정 버튼에서 옵션별 재고를 설정할 수 있습니다.">옵션별 재고 설정됨</span>'
+                        : '<label class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white pl-2 text-[10px] font-bold text-slate-500" title="0~999개 기본 재고 입력">재고<input type="number" id="stock-input-' + prod.id + '" min="0" max="999" step="1" value="' + stock + '" class="w-16 border-0 bg-transparent px-1 py-1.5 text-center text-xs font-black text-slate-800 outline-none"></label>' +
+                          '<button type="button" onclick="saveProductStock(\'' + prod.id + '\')" title="재고 저장" class="w-9 h-9 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"><i class="fa-solid fa-floppy-disk"></i></button>'}
                     <button type="button" onclick="optimizeProductDetailImages('${prod.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition">상세사진</button>
                     <button type="button" onclick="generateThumbnailForProduct(${idx})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition">목록사진</button>
                     <button type="button" onclick="toggleProductVisibility('${prod.id}')" title="${hidden ? '상품 노출' : '상품 숨김'}" class="w-9 h-9 rounded-lg ${hidden ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-600 hover:bg-slate-700'} text-white transition">
@@ -4042,6 +4191,72 @@
         setExtraImageUrls(urls);
     };
 
+    let productOptionStockDraft = {};
+
+    function getProductEditOptions() {
+        return document.getElementById('edit-prod-options').value
+            .split(/\r?\n/)
+            .map(option => option.trim())
+            .filter(Boolean);
+    }
+
+    function getProductOptionStockInputs() {
+        return Array.from(document.querySelectorAll('#edit-prod-option-stock-list input[data-option-value]'))
+            .reduce((stocks, input) => {
+                stocks[input.dataset.optionValue] = input.value;
+                return stocks;
+            }, {});
+    }
+
+    window.renderProductOptionStockInputs = function(seedStocks = null) {
+        const container = document.getElementById('edit-prod-option-stock-list');
+        if (!container) return;
+
+        if (seedStocks && typeof seedStocks === 'object') {
+            productOptionStockDraft = { ...seedStocks };
+        } else {
+            productOptionStockDraft = { ...productOptionStockDraft, ...getProductOptionStockInputs() };
+        }
+
+        const options = getProductEditOptions();
+        const defaultStock = Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(Number(document.getElementById('edit-prod-stock').value) || DEFAULT_PRODUCT_STOCK)));
+
+        if (options.length === 0) {
+            container.innerHTML = '<p class="py-2 text-center text-[11px] text-slate-400">옵션을 입력하면 옵션별 재고 설정칸이 나타납니다.</p>';
+            return;
+        }
+
+        container.innerHTML = options.map(option => {
+            const optionStock = productOptionStockDraft[option];
+            const stock = Number.isInteger(Number(optionStock))
+                ? Math.max(0, Math.min(MAX_PRODUCT_STOCK, Number(optionStock)))
+                : defaultStock;
+            const safeOption = escapeHtml(option);
+
+            return '<label class="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs">' +
+                '<span class="min-w-0 truncate font-semibold text-slate-700" title="' + safeOption + '">' + safeOption + '</span>' +
+                '<span class="flex shrink-0 items-center gap-1 text-slate-500">' +
+                    '<input type="number" min="0" max="999" step="1" value="' + stock + '" data-option-value="' + safeOption + '" class="w-16 rounded border border-slate-200 px-2 py-1 text-center font-black text-slate-800 outline-none focus:border-indigo-500">개' +
+                '</span>' +
+            '</label>';
+        }).join('');
+    };
+
+    function readEditedProductOptionStocks(options) {
+        const optionStockInputs = getProductOptionStockInputs();
+        const optionStocks = {};
+
+        for (const option of options) {
+            const stock = Number(optionStockInputs[option]);
+            if (!Number.isInteger(stock) || stock < 0 || stock > MAX_PRODUCT_STOCK) {
+                return null;
+            }
+            optionStocks[option] = stock;
+        }
+
+        return optionStocks;
+    }
+
     window.openAddProductModal = function() {
         document.getElementById('product-modal-title').textContent = "신규 품목 추가";
         document.getElementById('edit-prod-id').value = "";
@@ -4056,6 +4271,8 @@
         document.getElementById('edit-prod-thumbnail').value = "";
         document.getElementById('edit-prod-options').value = "";
         document.getElementById('edit-prod-extra-imgs').value = "";
+        productOptionStockDraft = {};
+        window.renderProductOptionStockInputs();
         window.renderExtraImageManager();
 
         openModal('product-edit-modal');
@@ -4078,6 +4295,8 @@
         // 문자열 오타 유발 요소를 \n 제어로 전환하여 SyntaxError 원천 소멸
         document.getElementById('edit-prod-options').value = Array.isArray(prod.options) ? prod.options.join('\n') : "";
         document.getElementById('edit-prod-extra-imgs').value = prod.extraImgs || "";
+        productOptionStockDraft = getProductOptionStocks(prod);
+        window.renderProductOptionStockInputs(productOptionStockDraft);
         window.renderExtraImageManager();
 
         openModal('product-edit-modal');
@@ -4119,6 +4338,17 @@
             return;
         }
 
+        if (new Set(options).size !== options.length) {
+            showToast("❌ 같은 옵션을 중복해서 입력할 수 없습니다.");
+            return;
+        }
+
+        const optionStocks = readEditedProductOptionStocks(options);
+        if (!optionStocks) {
+            showToast("❌ 옵션별 재고는 0개부터 999개까지 입력해 주세요.");
+            return;
+        }
+
         let updatedList = [...products];
 
         if (editId) {
@@ -4137,6 +4367,7 @@
                         price,
                         discountAmount,
                         stock,
+                        optionStocks,
                         img,
                         thumbnailUrl,
                         options,
@@ -4159,6 +4390,7 @@
                 price,
                 discountAmount,
                 stock,
+                optionStocks,
                 img,
                 thumbnailUrl,
                 options,
@@ -4417,6 +4649,12 @@
     }
 
     window.saveProductStock = async function(productId) {
+        const product = products.find(item => item.id === productId);
+        if (product && hasConfiguredOptionStocks(product)) {
+            showToast("⚠️ 옵션별 재고는 수정 버튼에서 설정해 주세요.");
+            return;
+        }
+
         const input = document.getElementById(`stock-input-${productId}`);
         const stock = Number(input?.value);
 

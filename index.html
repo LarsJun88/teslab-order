@@ -1167,14 +1167,75 @@
         return Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(stock)));
     }
 
+    function getProductOptions(product) {
+        const options = Array.isArray(product?.options) ? product.options : [];
+        return options.length > 0 ? options.map(option => String(option || '').trim()).filter(Boolean) : ['기본형'];
+    }
+
+    function getProductOptionStocks(product) {
+        const source = product?.optionStocks;
+        if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+
+        return Object.fromEntries(
+            Object.entries(source).map(([option, stock]) => [
+                String(option),
+                Math.max(0, Math.min(MAX_PRODUCT_STOCK, Math.floor(Number(stock) || 0)))
+            ])
+        );
+    }
+
+    function hasConfiguredOptionStocks(product) {
+        const optionStocks = getProductOptionStocks(product);
+        return getProductOptions(product).every(option => Object.prototype.hasOwnProperty.call(optionStocks, option));
+    }
+
+    function getOptionStock(product, optionValue) {
+        const optionStocks = getProductOptionStocks(product);
+        const option = String(optionValue || '').trim();
+        return Object.prototype.hasOwnProperty.call(optionStocks, option)
+            ? optionStocks[option]
+            : getProductStock(product);
+    }
+
+    function getProductDisplayStock(product) {
+        if (!hasConfiguredOptionStocks(product)) return getProductStock(product);
+        return getProductOptions(product).reduce((sum, option) => sum + getOptionStock(product, option), 0);
+    }
+
     function getCartProductQuantity(productId, cartItems = cart) {
         return cartItems
             .filter(item => item.productId === productId)
             .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     }
 
-    function getAvailableProductStock(product, cartItems = cart) {
+    function getCartOptionQuantity(productId, optionValue, cartItems = cart) {
+        return cartItems
+            .filter(item => item.productId === productId && String(item.optionValue || '').trim() === String(optionValue || '').trim())
+            .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    }
+
+    function getAvailableProductStock(product, optionValue = '', cartItems = cart) {
+        const option = String(optionValue || '').trim();
+        if (hasConfiguredOptionStocks(product) && getProductOptions(product).includes(option)) {
+            return Math.max(0, getOptionStock(product, option) - getCartOptionQuantity(product?.id, option, cartItems));
+        }
         return Math.max(0, getProductStock(product) - getCartProductQuantity(product?.id, cartItems));
+    }
+
+    function updateDetailStockDisplay(product = activeProduct, optionValue = '') {
+        const stockDisplay = document.getElementById('detail-stock-display');
+        if (!stockDisplay || !product) return;
+
+        const option = String(optionValue || '').trim();
+        const requiresOptionSelection = hasConfiguredOptionStocks(product) && !option;
+        const stock = requiresOptionSelection
+            ? null
+            : (option ? getAvailableProductStock(product, option) : getProductDisplayStock(product));
+
+        stockDisplay.textContent = requiresOptionSelection ? '옵션 선택' : stock === 0 ? '품절' : `${stock}개`;
+        stockDisplay.className = requiresOptionSelection || stock > 2
+            ? 'font-extrabold text-emerald-600'
+            : 'font-extrabold text-rose-600';
     }
 
     function isProductHidden(product) {
@@ -1182,9 +1243,15 @@
     }
 
     function isProductSoldOut(product) {
-        return isProductHidden(product) || getProductStock(product) === 0 ||
+        return isProductHidden(product) || getProductDisplayStock(product) === 0 ||
             isSoldOutText(product?.name) ||
             isSoldOutText(product?.itemNo);
+    }
+
+    function isOptionSoldOut(product, optionValue) {
+        const option = String(optionValue || '').trim();
+        return isProductSoldOut(product) || isSoldOutText(option) ||
+            (hasConfiguredOptionStocks(product) && getOptionStock(product, option) === 0);
     }
 
     function normalizeOptionLabel(value) {
@@ -1197,7 +1264,7 @@
     function isCartItemSoldOut(item) {
         const product = products.find(prod => prod.id === item.productId);
         if (!product) return false;
-        if (isProductSoldOut(product)) return true;
+        if (isOptionSoldOut(product, item.optionValue)) return true;
 
         const cartLabel = normalizeOptionLabel(item.optionName);
         const options = Array.isArray(product.options) ? product.options : [];
@@ -1212,21 +1279,29 @@
     }
 
     function findInventoryIssue(cartItems = cart, catalogProducts = products) {
-        const requestedByProduct = new Map();
+        const requestedByInventory = new Map();
 
         cartItems.forEach(item => {
             const productId = String(item.productId || '');
-            requestedByProduct.set(productId, (requestedByProduct.get(productId) || 0) + Number(item.quantity || 0));
+            const product = catalogProducts.find(candidate => candidate.id === productId);
+            const optionValue = String(item.optionValue || '').trim();
+            const useOptionStock = product && hasConfiguredOptionStocks(product) && getProductOptions(product).includes(optionValue);
+            const key = useOptionStock ? `${productId}\u0000${optionValue}` : productId;
+            const inventoryItem = requestedByInventory.get(key) || { product, productId, optionValue: useOptionStock ? optionValue : '', quantity: 0 };
+            inventoryItem.quantity += Number(item.quantity || 0);
+            requestedByInventory.set(key, inventoryItem);
         });
 
-        for (const [productId, requestedQuantity] of requestedByProduct) {
-            const product = catalogProducts.find(item => item.id === productId);
-            const availableStock = product ? getProductStock(product) : 0;
+        for (const inventoryItem of requestedByInventory.values()) {
+            const { product, productId, optionValue, quantity: requestedQuantity } = inventoryItem;
+            const availableStock = product
+                ? (optionValue ? getOptionStock(product, optionValue) : getProductStock(product))
+                : 0;
 
-            if (!product || isProductSoldOut(product) || requestedQuantity > availableStock) {
+            if (!product || isProductSoldOut(product) || (optionValue && isOptionSoldOut(product, optionValue)) || requestedQuantity > availableStock) {
                 return {
                     productId,
-                    productName: product?.name || '판매 종료 상품',
+                    productName: product ? `${product.name}${optionValue ? ` (${normalizeOptionLabel(optionValue)})` : ''}` : '판매 종료 상품',
                     availableStock,
                     requestedQuantity
                 };
@@ -1240,15 +1315,32 @@
         const issue = findInventoryIssue(cartItems, products);
         if (issue) return issue;
 
-        const requestedByProduct = new Map();
+        const requestedByInventory = new Map();
         cartItems.forEach(item => {
-            requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) || 0) + Number(item.quantity || 0));
+            const product = products.find(candidate => candidate.id === item.productId);
+            const optionValue = String(item.optionValue || '').trim();
+            const useOptionStock = product && hasConfiguredOptionStocks(product) && getProductOptions(product).includes(optionValue);
+            const key = useOptionStock ? `${item.productId}\u0000${optionValue}` : item.productId;
+            const inventoryItem = requestedByInventory.get(key) || { productId: item.productId, optionValue: useOptionStock ? optionValue : '', quantity: 0 };
+            inventoryItem.quantity += Number(item.quantity || 0);
+            requestedByInventory.set(key, inventoryItem);
         });
 
-        products = products.map(product => ({
-            ...product,
-            stock: getProductStock(product) - (requestedByProduct.get(product.id) || 0)
-        }));
+        products = products.map(product => {
+            const relevantItems = [...requestedByInventory.values()].filter(item => item.productId === product.id);
+            if (relevantItems.length === 0) return product;
+
+            if (hasConfiguredOptionStocks(product)) {
+                const optionStocks = { ...getProductOptionStocks(product) };
+                relevantItems.forEach(item => {
+                    if (item.optionValue) optionStocks[item.optionValue] = Math.max(0, getOptionStock(product, item.optionValue) - item.quantity);
+                });
+                return { ...product, optionStocks };
+            }
+
+            const requestedQuantity = relevantItems.reduce((sum, item) => sum + item.quantity, 0);
+            return { ...product, stock: getProductStock(product) - requestedQuantity };
+        });
         localProducts = products;
         localStorage.setItem('teslap_products_cache', JSON.stringify(products));
         renderProductsUI();
@@ -1268,15 +1360,9 @@
         if (activeProduct) {
             activeProduct = products.find(product => product.id === activeProduct.id) || null;
             if (activeProduct) {
-                const stock = getProductStock(activeProduct);
-                const stockDisplay = document.getElementById('detail-stock-display');
-                if (stockDisplay) {
-                    stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
-                    stockDisplay.className = stock <= 2
-                        ? 'font-extrabold text-rose-600'
-                        : 'font-extrabold text-emerald-600';
-                }
-                const maxDetailQuantity = Math.max(1, getAvailableProductStock(activeProduct));
+                const selectedOption = document.getElementById('detail-opt-select')?.value || '';
+                updateDetailStockDisplay(activeProduct, selectedOption);
+                const maxDetailQuantity = Math.max(1, getAvailableProductStock(activeProduct, selectedOption));
                 activeDetailQty = Math.min(activeDetailQty, maxDetailQuantity);
                 document.getElementById('detail-qty-display').textContent = activeDetailQty;
                 calculateDetailMockPrice();
@@ -1391,7 +1477,7 @@
 
         listContainer.innerHTML = visibleProducts.map(prod => {
             const soldOut = isProductSoldOut(prod);
-            const stock = getProductStock(prod);
+            const stock = getProductDisplayStock(prod);
             const lowStock = stock > 0 && stock <= 5;
             const thumbnailUrl = getProductThumbnailUrl(prod);
             const safeName = escapeHtml(prod.name || '상품');
@@ -1435,12 +1521,6 @@
         document.getElementById('detail-title').textContent = prod.name || '';
         document.getElementById('detail-desc').textContent = prod.desc || '';
         document.getElementById('detail-price').innerHTML = renderProductPriceHtml(prod, false);
-        const stock = getProductStock(prod);
-        const stockDisplay = document.getElementById('detail-stock-display');
-        stockDisplay.textContent = stock === 0 ? '품절' : `${stock}개`;
-        stockDisplay.className = stock <= 2
-            ? 'font-extrabold text-rose-600'
-            : 'font-extrabold text-emerald-600';
         document.getElementById('detail-qty-display').textContent = activeDetailQty;
         const detailSpecTextEl = document.getElementById('detail-spec-text');
 
@@ -1463,10 +1543,11 @@
         const selectEl = document.getElementById('detail-opt-select');
         const opts = Array.isArray(prod.options) && prod.options.length > 0 ? prod.options : ["기본형"];
         selectEl.innerHTML = `<option value="">-- 옵션을 선택해 주세요 --</option>` + opts.map(opt => {
-            const soldOutOption = isProductSoldOut(prod) || isSoldOutText(opt);
+            const soldOutOption = isOptionSoldOut(prod, opt);
             const safeOpt = escapeHtml(opt);
             return `<option value="${safeOpt}" ${soldOutOption ? 'disabled' : ''}>${safeOpt}${soldOutOption && !isSoldOutText(opt) ? ' (품절)' : ''}</option>`;
         }).join('');
+        updateDetailStockDisplay(prod);
 
         const extraImgsContainer = document.getElementById('detail-extra-images');
 
@@ -1545,7 +1626,8 @@
         if (!activeProduct) return;
 
         const nextQuantity = Math.max(1, activeDetailQty + delta);
-        const availableStock = getAvailableProductStock(activeProduct);
+        const selectedOption = document.getElementById('detail-opt-select').value;
+        const availableStock = getAvailableProductStock(activeProduct, selectedOption);
 
         if (delta > 0 && nextQuantity > availableStock) {
             showToast(`⚠️ 현재 추가 가능한 재고는 ${availableStock}개입니다.`);
@@ -1562,8 +1644,8 @@
         if (!button || !activeProduct) return;
 
         const selectedVal = document.getElementById('detail-opt-select').value;
-        const availableStock = getAvailableProductStock(activeProduct);
-        const soldOut = isProductSoldOut(activeProduct) || isSoldOutText(selectedVal);
+        const availableStock = getAvailableProductStock(activeProduct, selectedVal);
+        const soldOut = isOptionSoldOut(activeProduct, selectedVal);
         const insufficientStock = activeDetailQty > availableStock;
 
         button.disabled = soldOut || insufficientStock;
@@ -1585,6 +1667,7 @@
         const cost = Math.max(0, getProductSalePrice(activeProduct) + extra) * activeDetailQty;
 
         document.getElementById('detail-total-cost').textContent = `${cost.toLocaleString()}원`;
+        updateDetailStockDisplay(activeProduct, selectedVal);
         updateDetailAddButtonState();
     };
 
@@ -1593,7 +1676,7 @@
 
         const selectedVal = document.getElementById('detail-opt-select').value;
 
-        if (isProductSoldOut(activeProduct) || isSoldOutText(selectedVal)) {
+        if (isOptionSoldOut(activeProduct, selectedVal)) {
             showToast("❌ 품절된 품목은 주문할 수 없습니다.");
             return;
         }
@@ -1603,7 +1686,7 @@
             return;
         }
 
-        const availableStock = getAvailableProductStock(activeProduct);
+        const availableStock = getAvailableProductStock(activeProduct, selectedVal);
         if (activeDetailQty > availableStock) {
             showToast(`❌ 재고가 부족합니다. 현재 추가 가능한 수량은 ${availableStock}개입니다.`);
             return;
@@ -1651,9 +1734,14 @@
 
         container.innerHTML = cart.map((item, idx) => {
             const product = products.find(prod => prod.id === item.productId);
-            const currentStock = product ? getProductStock(product) : 0;
-            const requestedProductQuantity = getCartProductQuantity(item.productId);
-            const stockIssue = !product || requestedProductQuantity > currentStock;
+            const usesOptionStock = product && hasConfiguredOptionStocks(product);
+            const currentStock = product
+                ? (usesOptionStock ? getOptionStock(product, item.optionValue) : getProductStock(product))
+                : 0;
+            const requestedQuantity = usesOptionStock
+                ? getCartOptionQuantity(item.productId, item.optionValue)
+                : getCartProductQuantity(item.productId);
+            const stockIssue = !product || requestedQuantity > currentStock;
             const soldOut = isCartItemSoldOut(item) || stockIssue;
 
             return `
@@ -1682,7 +1770,7 @@
         if (!item) return;
 
         const product = products.find(prod => prod.id === item.productId);
-        if (delta > 0 && (!product || getCartProductQuantity(item.productId) + delta > getProductStock(product))) {
+        if (delta > 0 && (!product || delta > getAvailableProductStock(product, item.optionValue))) {
             showToast(`⚠️ ${product?.name || '상품'} 재고가 부족합니다.`);
             return;
         }
