@@ -535,6 +535,7 @@
                             </button>
                         </div>
                     </div>
+                    <div id="admin-order-status-filters" class="flex flex-wrap gap-2 border-t border-slate-100 px-4 py-3 sm:px-5" role="group" aria-label="주문 상태 필터"></div>
 
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse">
@@ -1178,6 +1179,7 @@
     let localOrders = [];
     let globalOrders = [];
     let isAdminAuthenticated = false;
+    let adminOrderStatusFilter = '전체';
 
     let localNotice = "필독사항: 본 전용 파츠는 맞춤 제작 상품으로, 입금 확인 이후 순차 제작됩니다.";
     let localShippingNotice = { enabled: false, title: "배송 일정 안내", message: "", version: "0" };
@@ -3022,6 +3024,34 @@
         )).join('');
     }
 
+    function renderAdminOrderStatusFilters(orders) {
+        const container = document.getElementById('admin-order-status-filters');
+        if (!container) return;
+
+        const statuses = [
+            { name: '전체', className: 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200' },
+            { name: '입금대기', className: 'border-rose-100 bg-rose-50 text-rose-700 hover:bg-rose-100' },
+            { name: '입금완료', className: 'border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100' },
+            { name: '배송준비', className: 'border-sky-100 bg-sky-50 text-sky-700 hover:bg-sky-100' },
+            { name: '배송중', className: 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' }
+        ];
+        const activeOrders = (Array.isArray(orders) ? orders : []).filter(order => order.status !== '배송완료');
+
+        container.innerHTML = statuses.map(status => {
+            const count = status.name === '전체'
+                ? activeOrders.length
+                : activeOrders.filter(order => order.status === status.name).length;
+            const selected = adminOrderStatusFilter === status.name;
+            const selectedClass = selected
+                ? 'ring-2 ring-offset-1 ring-slate-400'
+                : '';
+
+            return '<button type="button" onclick="setAdminOrderStatusFilter(\'' + status.name + '\')" aria-pressed="' + selected + '" class="rounded-lg border px-3 py-2 text-xs font-extrabold transition ' + status.className + ' ' + selectedClass + '">' +
+                status.name + ' <strong class="ml-1 font-black">' + count.toLocaleString() + '건</strong>' +
+            '</button>';
+        }).join('');
+    }
+
     function renderAdminOrdersUI(orders) {
         const tbody = document.getElementById('admin-table-body');
         const allOrders = Array.isArray(orders) ? [...orders] : [];
@@ -3029,15 +3059,21 @@
 
         updateOrderSummaryStats(allOrders);
         renderReadyToShipItemSummary(allOrders);
+        renderAdminOrderStatusFilters(allOrders);
 
         const visibleOrders = allOrders
             .filter(order => order.status !== "배송완료")
+            .filter(order => adminOrderStatusFilter === '전체' || order.status === adminOrderStatusFilter)
             .filter(order => matchesOrderSearch(order, query))
             .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         tbody.innerHTML = buildAdminOrderRows(
             visibleOrders,
-            query ? "검색 조건에 맞는 진행 주문이 없습니다." : "진행 중인 주문이 없습니다."
+            query
+                ? "검색 조건에 맞는 주문이 없습니다."
+                : adminOrderStatusFilter === '전체'
+                    ? "진행 중인 주문이 없습니다."
+                    : adminOrderStatusFilter + " 상태 주문이 없습니다."
         );
     }
 
@@ -3065,6 +3101,14 @@
     }
 
     window.filterAdminOrders = function() {
+        renderAdminOrdersUI(globalOrders);
+    };
+
+    window.setAdminOrderStatusFilter = function(status) {
+        const allowedStatuses = new Set(['전체', '입금대기', '입금완료', '배송준비', '배송중']);
+        if (!allowedStatuses.has(status)) return;
+
+        adminOrderStatusFilter = status;
         renderAdminOrdersUI(globalOrders);
     };
 
