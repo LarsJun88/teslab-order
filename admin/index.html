@@ -509,6 +509,9 @@
                         <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold">
                             <span class="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-indigo-700">대상 주문 <strong id="ready-to-ship-order-count" class="text-sm">0건</strong></span>
                             <span class="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-emerald-700">총 품목 <strong id="ready-to-ship-item-count" class="text-sm">0개</strong></span>
+                            <button type="button" id="ready-to-ship-toggle" onclick="toggleReadyToShipItemSummary()" aria-controls="ready-to-ship-item-list" aria-expanded="true" title="발송 준비 품목 접기" class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-800">
+                                <i id="ready-to-ship-toggle-icon" class="fa-solid fa-chevron-up"></i>
+                            </button>
                         </div>
                     </div>
                     <p id="ready-to-ship-status-summary" class="mt-3 text-[11px] font-medium text-slate-500" aria-live="polite"></p>
@@ -1180,6 +1183,7 @@
     let globalOrders = [];
     let isAdminAuthenticated = false;
     let adminOrderStatusFilter = '전체';
+    let isReadyToShipSummaryCollapsed = false;
 
     let localNotice = "필독사항: 본 전용 파츠는 맞춤 제작 상품으로, 입금 확인 이후 순차 제작됩니다.";
     let localShippingNotice = { enabled: false, title: "배송 일정 안내", message: "", version: "0" };
@@ -2955,6 +2959,24 @@
         }).join('');
     }
 
+    function updateReadyToShipSummaryCollapseState() {
+        const list = document.getElementById('ready-to-ship-item-list');
+        const toggle = document.getElementById('ready-to-ship-toggle');
+        const icon = document.getElementById('ready-to-ship-toggle-icon');
+
+        if (list) list.classList.toggle('hidden', isReadyToShipSummaryCollapsed);
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', String(!isReadyToShipSummaryCollapsed));
+            toggle.title = isReadyToShipSummaryCollapsed ? '발송 준비 품목 펼치기' : '발송 준비 품목 접기';
+        }
+        if (icon) icon.className = 'fa-solid ' + (isReadyToShipSummaryCollapsed ? 'fa-chevron-down' : 'fa-chevron-up');
+    }
+
+    window.toggleReadyToShipItemSummary = function() {
+        isReadyToShipSummaryCollapsed = !isReadyToShipSummaryCollapsed;
+        updateReadyToShipSummaryCollapseState();
+    };
+
     function renderReadyToShipItemSummary(orders) {
         const list = document.getElementById('ready-to-ship-item-list');
         const orderCountElement = document.getElementById('ready-to-ship-order-count');
@@ -3005,6 +3027,7 @@
 
         if (productRows.length === 0) {
             list.innerHTML = '<p class="col-span-full border-t border-slate-100 py-4 text-center text-xs font-medium text-slate-400">발송 준비 중인 품목이 없습니다.</p>';
+            updateReadyToShipSummaryCollapseState();
             return;
         }
 
@@ -3022,6 +3045,7 @@
                 )).join('') + '</div>' +
             '</div>'
         )).join('');
+        updateReadyToShipSummaryCollapseState();
     }
 
     function renderAdminOrderStatusFilters(orders) {
