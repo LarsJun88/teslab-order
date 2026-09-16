@@ -353,12 +353,38 @@ function normalizeEditableText(value, fieldName, required = false) {
   return normalized;
 }
 
+const ORDER_ID_PATTERN = /^ORD-\d{6}-(?:\d{4}|[a-f0-9]{32})$/;
+
+function getOrderSubmissionFingerprint(order) {
+  const fields = [
+    'ordererName', 'ordererPhone', 'ordererNickname', 'ordererCarInfo',
+    'shipName', 'shipPhone', 'postalCode', 'addressBasic', 'addressDetail',
+    'shippingMemo', 'depositorName'
+  ];
+  const content = Object.fromEntries(fields.map((field) => [field, String(order[field] || '').trim()]));
+  content.isIslandShipping = Boolean(order.isIslandShipping);
+  content.cart = order.cart.map((item) => ({
+    productId: String(item.productId), optionValue: String(item.optionValue),
+    quantity: Number(item.quantity), unitPrice: Number(item.unitPrice)
+  }));
+  return createHash('sha256').update(JSON.stringify(content)).digest('hex');
+}
+
+function getOrderReceipt(order) {
+  const fields = [
+    'orderId', 'ordererName', 'ordererNickname', 'ordererCarInfo',
+    'postalCode', 'addressBasic', 'addressDetail', 'depositorName',
+    'cart', 'productTotal', 'shippingFee', 'finalTotal'
+  ];
+  return Object.fromEntries(fields.map((field) => [field, order[field]]));
+}
+
 function validateOrderForInventory(order) {
   if (!order || typeof order !== "object") {
     throw new HttpsError("invalid-argument", "주문 정보가 없습니다.");
   }
 
-  if (!/^ORD-\d{6}-\d{4}$/.test(String(order.orderId || ""))) {
+  if (!ORDER_ID_PATTERN.test(String(order.orderId || ""))) {
     throw new HttpsError("invalid-argument", "주문번호 형식이 올바르지 않습니다.");
   }
 
@@ -470,6 +496,7 @@ exports.submitOrderWithInventory = onCall(
 
     const order = request.data?.order;
     validateOrderForInventory(order);
+    const submissionFingerprint = getOrderSubmissionFingerprint(order);
 
     const db = getFirestore();
     const catalogRef = db.doc(`artifacts/${APP_ID}/public/data/config/catalog`);
@@ -479,12 +506,18 @@ exports.submitOrderWithInventory = onCall(
       const catalogSnap = await transaction.get(catalogRef);
       const existingOrderSnap = await transaction.get(orderRef);
 
-      if (!catalogSnap.exists) {
-        throw new HttpsError("failed-precondition", "상품 정보를 찾을 수 없습니다.");
+      if (existingOrderSnap.exists) {
+        const existingOrder = existingOrderSnap.data();
+        if (/^ORD-\d{6}-[a-f0-9]{32}$/.test(order.orderId) &&
+            existingOrder.inventoryCommittedBy === request.auth.uid &&
+            existingOrder.submissionFingerprint === submissionFingerprint) {
+          return { orderId: order.orderId, receipt: getOrderReceipt(existingOrder) };
+        }
+        throw new HttpsError("already-exists", "이미 접수된 주문번호입니다.");
       }
 
-      if (existingOrderSnap.exists) {
-        throw new HttpsError("already-exists", "이미 접수된 주문번호입니다.");
+      if (!catalogSnap.exists) {
+        throw new HttpsError("failed-precondition", "상품 정보를 찾을 수 없습니다.");
       }
 
       const catalogData = catalogSnap.data() || {};
@@ -553,7 +586,8 @@ exports.submitOrderWithInventory = onCall(
         ordererPhoneDigits: normalizePhoneDigits(order.ordererPhone),
         orderLookupKey: buildOrderLookupKey(order.ordererName, order.ordererPhone),
         inventoryCommittedAt: FieldValue.serverTimestamp(),
-        inventoryCommittedBy: request.auth.uid
+        inventoryCommittedBy: request.auth.uid,
+        submissionFingerprint
       };
 
       transaction.update(catalogRef, { products: updatedProducts });
@@ -561,6 +595,7 @@ exports.submitOrderWithInventory = onCall(
 
       return {
         orderId: order.orderId,
+        receipt: getOrderReceipt(storedOrder),
         remainingStock: Object.fromEntries(
           updatedProducts
             .filter((product) => [...requestedInventory.values()].some((requestItem) => requestItem.productId === product.id))
@@ -579,7 +614,7 @@ exports.updateOrderWithInventory = onCall(
     const orderId = String(request.data?.orderId || "").trim();
     const draftCart = request.data?.cart;
     const details = request.data?.details;
-    if (!/^ORD-\d{6}-\d{4}$/.test(orderId)) throw new HttpsError("invalid-argument", "주문번호 형식이 올바르지 않습니다.");
+    if (!ORDER_ID_PATTERN.test(orderId)) throw new HttpsError("invalid-argument", "주문번호 형식이 올바르지 않습니다.");
     if (!Array.isArray(draftCart) || draftCart.length === 0 || draftCart.length > 100) throw new HttpsError("invalid-argument", "최소 한 개 이상의 주문 품목이 필요합니다.");
     if (!details || typeof details !== "object") throw new HttpsError("invalid-argument", "수정할 주문 정보가 없습니다.");
 

@@ -552,7 +552,7 @@
         <div class="p-5 max-h-[60vh] overflow-y-auto space-y-4 text-xs">
             <div class="border-b border-dashed border-slate-200 pb-3">
                 <span class="text-[10px] text-slate-400 block uppercase font-bold">주문코드</span>
-                <span class="text-sm font-extrabold text-slate-800 font-mono tracking-tight" id="receipt-order-id">-</span>
+                <span class="text-sm font-extrabold text-slate-800 font-mono tracking-tight break-all" id="receipt-order-id">-</span>
             </div>
 
             <div>
@@ -653,6 +653,7 @@
 </div>
 
 <script type="module">
+    import { createOrderSubmitter } from "./assets/order-submission.mjs";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import {
         getAuth,
@@ -665,7 +666,7 @@
         getDoc,
         setDoc,
         collection,
-        getDocs,
+        getDocsFromServer,
         query,
         where,
         onSnapshot
@@ -695,6 +696,9 @@
     let recordVisitCall = null;
     let isDemoMode = false;
     let currentUser = null;
+    let authRequest = null;
+    let orderLookupRequest = 0;
+    const confirmedOrderSubmitter = createOrderSubmitter(order => submitOrderWithInventoryCall({ order }));
 
     let localOrders = [];
     let globalOrders = [];
@@ -1041,33 +1045,44 @@
     // 🔒 [보안 강화 및 토큰 미스매치 무력화 패치]
     // 시스템에서 Custom Token 불일치 에러(auth/custom-token-mismatch)가 감지되면
     // 즉시 익명 로그인(signInAnonymously)으로 자동 전환하여 온라인 데이터 통신을 문제없이 이어갑니다.
-    async function runAuth() {
-        if (isDemoMode) return;
+    function runAuth() {
+        if (authRequest) return authRequest;
+        if (!auth || !db) return Promise.resolve(false);
 
-        try {
-            let userCredential;
+        authRequest = (async () => {
+            try {
+                let userCredential;
 
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                try {
-                    userCredential = await signInWithCustomToken(auth, __initial_auth_token);
-                } catch (tokenErr) {
-                    console.warn("Custom token auth mismatched, falling back to anonymous auth...", tokenErr);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try {
+                        userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+                    } catch (tokenErr) {
+                        console.warn("Custom token auth mismatched, falling back to anonymous auth...", tokenErr);
+                        userCredential = await signInAnonymously(auth);
+                    }
+                } else {
                     userCredential = await signInAnonymously(auth);
                 }
-            } else {
-                userCredential = await signInAnonymously(auth);
-            }
 
-            currentUser = userCredential.user;
-            await initCatalogAndNotice();
-            void recordSiteVisit();
-        } catch (err) {
-            console.error("Firebase auth failed completely. Demo mode active.", err);
-            isDemoMode = true;
-            products = localProducts;
-            renderProductsUI();
-            renderNoticeUI(localNotice);
+                currentUser = userCredential.user;
+                isDemoMode = false;
+                await initCatalogAndNotice();
+                void recordSiteVisit();
+            } catch (err) {
+                console.error("Firebase authentication failed.", err);
+                currentUser = null;
+                isDemoMode = true;
+            }
+            return Boolean(currentUser) && !isDemoMode;
+        })().finally(() => { authRequest = null; });
+        return authRequest;
+    }
+
+    async function ensureOrderServerConnection() {
+        if ((!currentUser || isDemoMode) && !await runAuth()) {
+            throw new Error('주문 서버에 연결하지 못했습니다.');
         }
+        if (!db || !submitOrderWithInventoryCall) throw new Error('주문 서버 연결을 준비하지 못했습니다.');
     }
 
 
@@ -1891,21 +1906,10 @@
 
     window.handleFormSubmit = async function(event) {
         event.preventDefault();
+        if (isSubmittingOrder) return;
 
         if (cart.length === 0) {
             showToast("❌ 최소 한 개 이상의 품목을 담아주세요.");
-            return;
-        }
-
-        const soldOutCartItem = findSoldOutCartItem();
-        if (soldOutCartItem) {
-            showToast(`❌ 품절된 품목은 주문할 수 없습니다: ${soldOutCartItem.optionName}`);
-            return;
-        }
-
-        const inventoryIssue = findInventoryIssue();
-        if (inventoryIssue) {
-            showToast(`❌ ${inventoryIssue.productName} 재고가 부족합니다. 현재 ${inventoryIssue.availableStock}개`);
             return;
         }
 
@@ -1923,11 +1927,6 @@
         }
 
         const date = new Date();
-        const year = String(date.getFullYear()).slice(2);
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const rand = Math.floor(1000 + Math.random() * 9000);
-        const orderId = `ORD-${year}${month}${day}-${rand}`;
 
         const productSum = cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
         let finalShipping = shippingDefault;
@@ -1936,7 +1935,6 @@
         const totalSum = productSum + finalShipping;
 
         const orderPayload = {
-            orderId,
             timestamp: date.toISOString(),
             createdAt: date.toLocaleString('ko-KR'),
             ordererName: document.getElementById('orderer_name').value.trim(),
@@ -1963,8 +1961,6 @@
             courier: "한진택배"
         };
 
-        if (isSubmittingOrder) return;
-
         const submitButton = event.submitter || document.getElementById('order-submit-button');
         const originalButtonHtml = submitButton?.innerHTML || '';
         isSubmittingOrder = true;
@@ -1975,23 +1971,9 @@
         }
 
         try {
-            if (isDemoMode) {
-                const localInventoryIssue = commitLocalInventory(orderPayload.cart);
-                if (localInventoryIssue) {
-                    showToast(`❌ ${localInventoryIssue.productName} 재고가 부족합니다. 현재 ${localInventoryIssue.availableStock}개`);
-                    return;
-                }
-                localOrders.push(orderPayload);
-                renderSuccessReceipt(orderPayload);
-                return;
-            }
-
-            if (!submitOrderWithInventoryCall) {
-                throw new Error('Inventory order function is unavailable.');
-            }
-
-            await submitOrderWithInventoryCall({ order: orderPayload });
-            renderSuccessReceipt(orderPayload);
+            await ensureOrderServerConnection();
+            const receipt = await confirmedOrderSubmitter.submit(orderPayload);
+            renderSuccessReceipt(receipt);
         } catch (err) {
             console.error("Inventory order submission failed.", err);
             const details = err?.details || err?.customData?.details;
@@ -2001,7 +1983,7 @@
             } else if (String(err?.code || '').includes('already-exists')) {
                 showToast('❌ 주문번호가 중복되었습니다. 다시 주문해 주세요.');
             } else {
-                showToast('❌ 주문 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+                showToast('주문 저장을 확인하지 못했습니다. 입력 내용을 유지한 채 다시 시도해 주세요. 계속 실패하면 구매조회에서 확인해 주세요.');
             }
         } finally {
             isSubmittingOrder = false;
@@ -2033,6 +2015,7 @@
 
     window.closeSuccessModal = function() {
         document.getElementById('success-modal').classList.add('hidden');
+        confirmedOrderSubmitter.clear();
 
         cart = [];
         renderCartUI();
@@ -2059,6 +2042,7 @@
         }
 
         const resultContainer = document.getElementById('track-result-container');
+        const requestId = ++orderLookupRequest;
         resultContainer.innerHTML = `
             <div class="text-center py-6 text-slate-400">
                 <i class="fa-solid fa-spinner animate-spin text-lg mb-2 block text-indigo-500"></i>
@@ -2079,31 +2063,28 @@
             });
         };
 
-        if (isDemoMode) {
-            foundOrders = localOrders.filter(isTargetOrder);
-            renderFoundOrders(foundOrders);
-            return;
-        }
-
         try {
+            await ensureOrderServerConnection();
             const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
             const lookupKey = buildOrderLookupKey(trackName, trackPhone);
 
-            addMatchingOrders(await getDocs(query(ordersRef, where('orderLookupKey', '==', lookupKey))));
+            addMatchingOrders(await getDocsFromServer(query(ordersRef, where('orderLookupKey', '==', lookupKey))));
 
             if (foundOrders.length === 0) {
-                addMatchingOrders(await getDocs(query(ordersRef, where('ordererPhoneDigits', '==', targetPhone))));
+                addMatchingOrders(await getDocsFromServer(query(ordersRef, where('ordererPhoneDigits', '==', targetPhone))));
             }
 
             if (foundOrders.length === 0) {
-                addMatchingOrders(await getDocs(query(ordersRef, where('ordererPhone', '==', trackPhone))));
+                addMatchingOrders(await getDocsFromServer(query(ordersRef, where('ordererPhone', '==', trackPhone))));
             }
 
-            renderFoundOrders(dedupeOrdersById(foundOrders));
+            if (requestId === orderLookupRequest) renderFoundOrders(dedupeOrdersById(foundOrders));
         } catch (err) {
-            console.warn("Lookup failed. Local fallback.", err);
-            foundOrders = localOrders.filter(isTargetOrder);
-            renderFoundOrders(foundOrders);
+            console.warn("Order lookup failed.", err);
+            if (requestId !== orderLookupRequest) return;
+            resultContainer.innerHTML = '<div role="alert" class="space-y-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">' +
+                '<p>주문 내역을 불러오지 못했습니다. 연결을 확인한 뒤 다시 조회해 주세요.</p>' +
+                '<button type="button" onclick="lookupOrder()" class="rounded-lg border border-rose-300 px-3 py-2 font-bold"><i class="fa-solid fa-rotate-right mr-1" aria-hidden="true"></i>다시 조회</button></div>';
         }
     };
 
@@ -2150,7 +2131,7 @@
                     <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
                         <div>
                             <span class="text-[10px] text-slate-400 block font-mono">주문코드</span>
-                            <strong class="font-mono text-slate-800 text-sm">${order.orderId}</strong>
+                            <strong class="font-mono text-slate-800 text-sm break-all">${order.orderId}</strong>
                         </div>
                         <span class="px-2.5 py-1.5 rounded-lg text-xs font-bold ${badgeClass}">${order.status}</span>
                     </div>

@@ -73,3 +73,15 @@ firebase deploy --only functions:notifyTelegramOnOrderCreated
 ```
 
 Firebase Cloud Functions may require the Firebase project to be on the Blaze plan.
+
+## Order reliability checks
+
+Run `node --test tests/order-reliability.test.mjs` from this repository.
+The tests use simulated Firestore transactions and a DOM substitute, and do not
+write production orders or send Telegram messages. They cover 1,500 orders,
+authentication and storage failures, ID collisions, lost-response retries,
+legacy order editing, and keeping loaded orders when a refresh fails.
+
+Deploy `submitOrderWithInventory` and `updateOrderWithInventory` before publishing
+the frontend when changing the order ID or receipt contract. New order IDs use
+a UUID suffix; existing four-digit order IDs remain supported.
