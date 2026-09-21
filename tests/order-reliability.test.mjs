@@ -15,8 +15,8 @@ const fixtureProducts = () => Array.from({ length: 4 }, (_, i) => ({
     id: 'test-product-' + i, name: 'Test Product ' + i, price: 12000, stock: 999,
     options: ['Black', 'Red'], optionStocks: { Black: 999, Red: 999 }
 }));
-const fixtureOrder = (i = 0) => ({
-    orderId: createOrderId(), timestamp: new Date(Date.UTC(2026, 8, 6, 0, 0, i)).toISOString(), createdAt: '2026-09-06',
+const fixtureOrder = (i = 0, orderId = createOrderId()) => ({
+    orderId, timestamp: new Date(Date.UTC(2026, 8, 6, 0, 0, i)).toISOString(), createdAt: '2026-09-06',
     ordererName: 'Test Buyer ' + i, ordererPhone: '010' + String(i).padStart(8, '0'),
     ordererNickname: 'test-nick-' + i, ordererCarInfo: 'Test Car',
     shipName: 'Test Receiver', shipPhone: '01000000000', postalCode: '00000',
@@ -77,7 +77,7 @@ function pageHarness(file) {
         const classes = new Set();
         return { innerHTML: '', textContent: '', value: '', checked: true, style: {}, dataset: {},
             classList: { add(...names) { names.forEach(n => classes.add(n)); }, remove(...names) { names.forEach(n => classes.delete(n)); }, contains(n) { return classes.has(n); }, toggle(n, force) { const on = force ?? !classes.has(n); on ? classes.add(n) : classes.delete(n); } },
-            setAttribute() {}, appendChild() {}, removeChild() {}, click() {}, remove() {}, reset() {}, querySelectorAll() { return []; }
+            setAttribute() {}, removeAttribute() {}, appendChild() {}, removeChild() {}, click() {}, remove() {}, reset() {}, querySelectorAll() { return []; }
         };
     };
     const document = { getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
@@ -131,12 +131,12 @@ function pageHarness(file) {
         submit: () => context.handleFormSubmit({ preventDefault() {} }) };
 }
 
-test('1,500 unique IDs and sequential orders cross the 1,000 boundary', async () => {
+test('1,500 unique five-digit IDs and sequential orders cross the 1,000 boundary', async () => {
     const app = backendHarness();
     const ids = new Set();
     for (let i = 0; i < 1500; i++) {
-        const order = fixtureOrder(i);
-        assert.match(order.orderId, /^ORD-\d{6}-[a-f0-9]{32}$/);
+        const order = fixtureOrder(i, `ORD-260906-${String(i).padStart(5, '0')}`);
+        assert.match(order.orderId, /^ORD-\d{6}-\d{5}$/);
         ids.add(order.orderId);
         const result = await app.submit(order);
         assert.equal(result.receipt.orderId, order.orderId);
@@ -158,6 +158,19 @@ test('retry returns stored receipt without a second write, even after stock or p
     assert.equal(JSON.stringify([...app.records]), before);
     await assert.rejects(app.submit(order, 'other-user'), e => e.code === 'already-exists');
     await assert.rejects(app.submit({ ...order, ordererName: 'Changed' }), e => e.code === 'already-exists');
+});
+
+test('five-digit IDs do not reuse a legacy four-digit number and keep retry receipts', async () => {
+    const app = backendHarness();
+    const legacy = fixtureOrder(1, 'ORD-260906-1234');
+    await app.submit(legacy);
+    await assert.rejects(app.submit(fixtureOrder(2, 'ORD-260906-01234')), error => error.code === 'already-exists');
+
+    const fiveDigit = fixtureOrder(3, 'ORD-260906-54321');
+    const first = await app.submit(fiveDigit);
+    const retry = await app.submit({ ...fiveDigit, timestamp: 'retry' });
+    assert.equal(retry.orderId, first.orderId);
+    assert.equal(app.records.size - 1, 2);
 });
 
 test('legacy IDs stay valid and modern IDs remain editable', async () => {
@@ -337,4 +350,18 @@ test('completed search debounces input, finds older orders and renders bounded b
     assert.equal((body.innerHTML.match(/<tr class=/g) || []).length, 50);
     assert.equal(page.document.getElementById('completed-order-result-count').textContent, '1,499건 중 50건 표시');
     assert.equal(page.document.getElementById('completed-order-load-more').classList.contains('hidden'), false);
+});
+
+test('daily statistics use the selected calendar date in Korea time', () => {
+    const page = pageHarness('admin/index.html');
+    page.run(`globalOrders = [
+        { ...testCapture.queryOrders[0], ...(${JSON.stringify(fixtureOrder(1))}), timestamp: '2026-09-06T14:30:00.000Z' },
+        { ...testCapture.queryOrders[0], ...(${JSON.stringify(fixtureOrder(2))}), timestamp: '2026-09-07T01:00:00.000Z' }
+    ]; activeStatsMode = 'day'; activeStatsPeriod = ''; renderStatsControls(globalOrders);`);
+    assert.equal(page.document.getElementById('stats-day-input').value, '2026-09-07');
+    assert.equal(page.run('getCurrentStatsLabel()'), '2026년 9월 7일');
+    assert.equal(page.run('getOrdersForActiveStatsMode(globalOrders).length'), 1);
+    page.document.getElementById('stats-day-input').value = '2026-09-06';
+    page.run("changeStatsDay('2026-09-06')");
+    assert.equal(page.run('getOrdersForActiveStatsMode(globalOrders).length'), 1);
 });

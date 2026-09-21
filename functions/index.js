@@ -353,7 +353,12 @@ function normalizeEditableText(value, fieldName, required = false) {
   return normalized;
 }
 
-const ORDER_ID_PATTERN = /^ORD-\d{6}-(?:\d{4}|[a-f0-9]{32})$/;
+const ORDER_ID_PATTERN = /^ORD-\d{6}-(?:\d{4}|\d{5}|[a-f0-9]{32})$/;
+
+function getLegacyEquivalentOrderId(orderId) {
+  const match = /^ORD-(\d{6})-0(\d{4})$/.exec(orderId);
+  return match ? `ORD-${match[1]}-${match[2]}` : null;
+}
 
 function getOrderSubmissionFingerprint(order) {
   const fields = [
@@ -501,18 +506,32 @@ exports.submitOrderWithInventory = onCall(
     const db = getFirestore();
     const catalogRef = db.doc(`artifacts/${APP_ID}/public/data/config/catalog`);
     const orderRef = db.doc(`artifacts/${APP_ID}/public/data/orders/${order.orderId}`);
+    const legacyEquivalentOrderId = getLegacyEquivalentOrderId(order.orderId);
+    const legacyEquivalentRef = legacyEquivalentOrderId
+      ? db.doc(`artifacts/${APP_ID}/public/data/orders/${legacyEquivalentOrderId}`)
+      : null;
 
     return db.runTransaction(async (transaction) => {
-      const catalogSnap = await transaction.get(catalogRef);
-      const existingOrderSnap = await transaction.get(orderRef);
+      const snapshots = await Promise.all([
+        transaction.get(catalogRef),
+        transaction.get(orderRef),
+        legacyEquivalentRef ? transaction.get(legacyEquivalentRef) : Promise.resolve(null)
+      ]);
+      const catalogSnap = snapshots[0];
+      const existingOrderSnap = snapshots[1];
+      const legacyEquivalentSnap = snapshots[2];
 
       if (existingOrderSnap.exists) {
         const existingOrder = existingOrderSnap.data();
-        if (/^ORD-\d{6}-[a-f0-9]{32}$/.test(order.orderId) &&
+        if (/^ORD-\d{6}-(?:\d{5}|[a-f0-9]{32})$/.test(order.orderId) &&
             existingOrder.inventoryCommittedBy === request.auth.uid &&
             existingOrder.submissionFingerprint === submissionFingerprint) {
           return { orderId: order.orderId, receipt: getOrderReceipt(existingOrder) };
         }
+        throw new HttpsError("already-exists", "이미 접수된 주문번호입니다.");
+      }
+
+      if (legacyEquivalentSnap?.exists) {
         throw new HttpsError("already-exists", "이미 접수된 주문번호입니다.");
       }
 

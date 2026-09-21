@@ -84,4 +84,5 @@ legacy order editing, and keeping loaded orders when a refresh fails.
 
 Deploy `submitOrderWithInventory` and `updateOrderWithInventory` before publishing
 the frontend when changing the order ID or receipt contract. New order IDs use
-a UUID suffix; existing four-digit order IDs remain supported.
+a random five-digit suffix that the server checks atomically before accepting;
+existing four-digit and earlier long order IDs remain supported.

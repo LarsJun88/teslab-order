@@ -626,17 +626,21 @@
                     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
                         <div>
                             <h3 class="font-bold text-slate-900 text-base mb-1">📊 통계</h3>
-                            <p class="text-xs text-slate-400">전체, 월별, 년도별 주문 수량과 배송비 차액을 포함한 판매 금액을 확인합니다.</p>
+                            <p class="text-xs text-slate-400">전체, 일별, 월별, 년도별 주문 수량과 배송비 차액을 포함한 판매 금액을 확인합니다.</p>
                         </div>
                         <div class="flex flex-col sm:flex-row gap-2">
                             <div class="flex gap-2 bg-slate-50 border border-slate-100 p-1 rounded-xl">
                                 <button type="button" onclick="switchStatsMode('all')" id="stats-mode-all" class="px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition">전체</button>
+                                <button type="button" onclick="switchStatsMode('day')" id="stats-mode-day" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">일별</button>
                                 <button type="button" onclick="switchStatsMode('month')" id="stats-mode-month" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">월별</button>
                                 <button type="button" onclick="switchStatsMode('year')" id="stats-mode-year" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white transition">년도별</button>
                             </div>
                             <div id="stats-period-controls" class="hidden">
                                 <select id="stats-period-select" onchange="changeStatsPeriod(this.value)" class="w-full sm:w-40 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">
                                 </select>
+                            </div>
+                            <div id="stats-day-controls" class="hidden">
+                                <input id="stats-day-input" type="date" onchange="changeStatsDay(this.value)" class="w-full sm:w-40 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">
                             </div>
                             <div class="flex gap-1 bg-slate-50 border border-slate-100 p-1 rounded-xl" aria-label="통계 그래프 형태">
                                 <button type="button" onclick="switchStatsChart('bar')" id="stats-chart-bar" class="px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition">
@@ -3651,20 +3655,31 @@
     }
 
     function getStatsPeriodKey(order, mode) {
-        const orderDate = getOrderDate(order);
+        const dateKey = getStatsDateKey(order);
 
-        if (!orderDate) {
+        if (!dateKey) {
             return "unknown";
         }
 
-        const year = String(orderDate.getFullYear());
-        const month = String(orderDate.getMonth() + 1).padStart(2, '0');
+        const [year, month] = dateKey.split('-');
 
         if (mode === "year") {
             return year;
         }
 
         return `${year}-${month}`;
+    }
+
+    function getStatsDateKey(order) {
+        const orderDate = getOrderDate(order);
+
+        if (!orderDate) return "";
+
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(orderDate);
+        const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return `${values.year}-${values.month}-${values.day}`;
     }
 
     function getStatsPeriodLabel(key, mode) {
@@ -3674,6 +3689,11 @@
 
         if (mode === "year") {
             return `${key}년`;
+        }
+
+        if (mode === "day") {
+            const [year, month, day] = key.split('-');
+            return `${year}년 ${Number(month)}월 ${Number(day)}일`;
         }
 
         const [year, month] = key.split("-");
@@ -3688,23 +3708,49 @@
 
     function renderStatsControls(orders) {
         const allBtn = document.getElementById('stats-mode-all');
+        const dayBtn = document.getElementById('stats-mode-day');
         const monthBtn = document.getElementById('stats-mode-month');
         const yearBtn = document.getElementById('stats-mode-year');
         const periodControls = document.getElementById('stats-period-controls');
         const periodSelect = document.getElementById('stats-period-select');
+        const dayControls = document.getElementById('stats-day-controls');
+        const dayInput = document.getElementById('stats-day-input');
 
         if (allBtn) allBtn.className = getStatsModeButtonClass(activeStatsMode === "all");
+        if (dayBtn) dayBtn.className = getStatsModeButtonClass(activeStatsMode === "day");
         if (monthBtn) monthBtn.className = getStatsModeButtonClass(activeStatsMode === "month");
         if (yearBtn) yearBtn.className = getStatsModeButtonClass(activeStatsMode === "year");
 
-        if (!periodControls || !periodSelect) return;
+        if (!periodControls || !periodSelect || !dayControls || !dayInput) return;
 
         if (activeStatsMode === "all") {
             activeStatsPeriod = "";
             periodControls.classList.add('hidden');
+            dayControls.classList.add('hidden');
             periodSelect.innerHTML = "";
             return;
         }
+
+        if (activeStatsMode === "day") {
+            const dates = Array.from(new Set(orders.map(getStatsDateKey).filter(Boolean))).sort().reverse();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(activeStatsPeriod)) {
+                activeStatsPeriod = dates[0] || getStatsDateKey({ timestamp: new Date().toISOString() });
+            }
+            dayInput.value = activeStatsPeriod;
+            if (dates.length > 0) {
+                dayInput.min = dates[dates.length - 1];
+                dayInput.max = dates[0];
+            } else {
+                dayInput.removeAttribute('min');
+                dayInput.removeAttribute('max');
+            }
+            periodControls.classList.add('hidden');
+            dayControls.classList.remove('hidden');
+            periodSelect.innerHTML = "";
+            return;
+        }
+
+        dayControls.classList.add('hidden');
 
         const periods = Array.from(new Set(
             orders.map(order => getStatsPeriodKey(order, activeStatsMode))
@@ -3740,6 +3786,10 @@
             return [];
         }
 
+        if (activeStatsMode === "day") {
+            return orders.filter(order => getStatsDateKey(order) === activeStatsPeriod);
+        }
+
         return orders.filter(order => getStatsPeriodKey(order, activeStatsMode) === activeStatsPeriod);
     }
 
@@ -3759,6 +3809,12 @@
 
     window.changeStatsPeriod = function(period) {
         activeStatsPeriod = period;
+        renderAdminStatistics();
+    };
+
+    window.changeStatsDay = function(date) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+        activeStatsPeriod = date;
         renderAdminStatistics();
     };
 

@@ -1,12 +1,12 @@
 const PENDING_KEY = 'teslab_pending_order_v2';
-const ORDER_ID_PATTERN = /^ORD-\d{6}-[a-f0-9]{32}$/;
+const ORDER_ID_PATTERN = /^ORD-\d{6}-(?:\d{5}|[a-f0-9]{32})$/;
 
 export function createOrderId(date = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Seoul', year: '2-digit', month: '2-digit', day: '2-digit'
     }).formatToParts(date);
     const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
-    const suffix = globalThis.crypto.randomUUID().replace(/-/g, '');
+    const suffix = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
     return `ORD-${values.year}${values.month}${values.day}-${suffix}`;
 }
 
