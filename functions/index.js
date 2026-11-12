@@ -414,6 +414,103 @@ function validateOrderForInventory(order) {
   }
 }
 
+function requireAdmin(request) {
+  if (request.auth?.token?.admin !== true) {
+    throw new HttpsError("permission-denied", "관리자 계정으로 로그인해 주세요.");
+  }
+}
+
+const callableOptions = { region: "asia-northeast3", invoker: "public" };
+
+exports.lookupCustomerOrders = onCall(callableOptions, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+  const name = normalizeLookupName(request.data?.name);
+  const rawPhone = String(request.data?.phone || "").trim();
+  const phone = normalizePhoneDigits(rawPhone);
+  if (!name || !/^\d{7,12}$/.test(phone)) throw new HttpsError("invalid-argument", "이름과 연락처를 확인해 주세요.");
+  const ref = getFirestore().collection("artifacts/" + APP_ID + "/public/data/orders");
+  const queries = [["orderLookupKey", buildOrderLookupKey(name, phone)], ["ordererPhoneDigits", phone],
+    ["ordererPhone", phone], ["ordererPhone", rawPhone]];
+  const results = new Map();
+  for (const [field, value] of queries) {
+    const snap = await ref.where(field, "==", value).get();
+    for (const doc of snap.docs) {
+      const order = doc.data();
+      if (normalizeLookupName(order.ordererName) !== name || normalizePhoneDigits(order.ordererPhone) !== phone) continue;
+      results.set(doc.id, { orderId: doc.id, timestamp: order.timestamp || "", status: order.status || "",
+        courier: order.courier || "", trackingNumber: order.trackingNumber || "", shipName: order.shipName || "",
+        postalCode: order.postalCode || "", addressBasic: order.addressBasic || "", addressDetail: order.addressDetail || "",
+        cart: (order.cart || []).map(({ optionName, quantity }) => ({ optionName, quantity })) });
+    }
+  }
+  return { orders: [...results.values()] };
+});
+
+exports.importHanjinWaybill = onCall(callableOptions, async request => {
+  requireAdmin(request);
+  const { orderId, trackingNumber } = request.data || {};
+  if (!ORDER_ID_PATTERN.test(orderId) || typeof trackingNumber !== "string" || !/^\d{10,14}$/.test(trackingNumber)) {
+    throw new HttpsError("invalid-argument", "주문번호 또는 송장번호 형식 오류");
+  }
+  const db = getFirestore();
+  const orders = db.collection("artifacts/" + APP_ID + "/public/data/orders");
+  const ref = orders.doc(orderId);
+  return db.runTransaction(async tx => {
+    const order = (await tx.get(ref)).data();
+    if (!order) throw new HttpsError("not-found", "주문 없음");
+    if (order.trackingNumber === trackingNumber && order.courier === "한진택배") return { changed: false };
+    if (order.trackingNumber || !["배송준비", "입금완료"].includes(order.status)) {
+      throw new HttpsError("failed-precondition", "기존 송장 또는 변경된 주문 상태 확인 필요");
+    }
+    const used = await tx.get(orders.where("trackingNumber", "==", trackingNumber).limit(1));
+    if (!used.empty) throw new HttpsError("already-exists", "다른 주문에 등록된 송장");
+    tx.update(ref, { trackingNumber, courier: "한진택배", status: "배송중" });
+    return { changed: true };
+  });
+});
+
+exports.cancelOrderWithInventory = onCall(callableOptions, async (request) => {
+  requireAdmin(request);
+  const orderId = String(request.data?.orderId || "");
+  const reason = normalizeEditableText(request.data?.reason, "취소 사유", true);
+  if (!ORDER_ID_PATTERN.test(orderId)) throw new HttpsError("invalid-argument", "주문번호를 확인해 주세요.");
+  const db = getFirestore();
+  const base = "artifacts/" + APP_ID + "/public/data/";
+  const orderRef = db.doc(base + "orders/" + orderId);
+  const catalogRef = db.doc(base + "config/catalog");
+  return db.runTransaction(async tx => {
+    const snap = await tx.get(orderRef);
+    if (!snap.exists) throw new HttpsError("not-found", "주문을 찾을 수 없습니다.");
+    const order = snap.data();
+    if (order.status === "주문취소") return { cancelReason: order.cancelReason, restored: order.stockRestored === true };
+    if (!["입금대기", "입금완료", "배송준비"].includes(order.status) || order.trackingNumber) {
+      throw new HttpsError("failed-precondition", "송장이 없는 미발송 주문만 취소할 수 있습니다.");
+    }
+    const restored = Boolean(order.inventoryCommittedAt);
+    if (restored) {
+      const catalog = (await tx.get(catalogRef)).data()?.products || [];
+      for (const item of order.cart || []) {
+        const product = catalog.find(p => p.id === item.productId);
+        if (product && hasConfiguredOptionStocks(product) && !getProductOptions(product).includes(item.optionValue)) {
+          throw new HttpsError("failed-precondition", "주문 당시 옵션을 현재 카탈로그에서 확인해 주세요.");
+        }
+      }
+      const changes = [...buildInventoryRequests(order.cart, catalog).values()];
+      for (const item of changes) {
+        if (!item.product || (hasConfiguredOptionStocks(item.product) && !item.optionValue) ||
+            !Number.isInteger(item.quantity) || item.quantity < 1 ||
+            getInventoryAvailableStock(item) + item.quantity > MAX_PRODUCT_STOCK) {
+          throw new HttpsError("failed-precondition", "복구할 품목·옵션 또는 재고 상한을 확인해 주세요.");
+        }
+      }
+      tx.update(catalogRef, { products: applyInventoryChanges(catalog, changes.map(item => ({ ...item, delta: -item.quantity }))) });
+    }
+    tx.update(orderRef, { status: "주문취소", cancelReason: reason, canceledAt: FieldValue.serverTimestamp(),
+      canceledBy: request.auth.uid, stockRestored: restored });
+    return { cancelReason: reason, restored };
+  });
+});
+
 exports.recordVisit = onCall(
   { region: "asia-northeast3", invoker: "public" },
   async (request) => {
@@ -468,7 +565,7 @@ exports.recordVisit = onCall(
 exports.getVisitorAnalytics = onCall(
   { region: "asia-northeast3", invoker: "public" },
   async (request) => {
-    if (!request.auth) throw new HttpsError("unauthenticated", "Sign in is required to view visitor analytics.");
+    requireAdmin(request);
 
     const requestedDays = Math.floor(Number(request.data?.days || 30));
     const days = Number.isFinite(requestedDays) ? Math.max(7, Math.min(VISITOR_ANALYTICS_MAX_DAYS, requestedDays)) : 30;
@@ -597,6 +694,8 @@ exports.submitOrderWithInventory = onCall(
       const shippingFee = CUSTOMER_SHIPPING_FEE + (order.isIslandShipping ? ISLAND_SHIPPING_FEE : 0);
       const storedOrder = {
         ...order,
+        status: "입금대기",
+        trackingNumber: "",
         cart: normalizedCart,
         productTotal,
         shippingFee,
@@ -628,7 +727,7 @@ exports.submitOrderWithInventory = onCall(
 exports.updateOrderWithInventory = onCall(
   { region: "asia-northeast3", invoker: "public" },
   async (request) => {
-    if (!request.auth) throw new HttpsError("unauthenticated", "로그인 연결 후 주문을 수정할 수 있습니다.");
+    requireAdmin(request);
 
     const orderId = String(request.data?.orderId || "").trim();
     const draftCart = request.data?.cart;
@@ -665,6 +764,7 @@ exports.updateOrderWithInventory = onCall(
 
       const catalogProducts = Array.isArray(catalogSnap.data()?.products) ? catalogSnap.data().products : [];
       const storedOrder = orderSnap.data() || {};
+      if (storedOrder.status === "주문취소") throw new HttpsError("failed-precondition", "이미 취소된 주문입니다.");
       const originalCart = Array.isArray(storedOrder.cart) ? storedOrder.cart : [];
       const usedSourceIndexes = new Set();
       const nextCart = [];
@@ -755,9 +855,7 @@ exports.optimizeProductThumbnails = onCall(
     memory: '1GiB'
   },
   async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in is required to optimize product thumbnails.');
-    }
+    requireAdmin(request);
 
     const requestedProductIds = Array.isArray(request.data?.productIds)
       ? request.data.productIds.map((value) => String(value || '').trim()).filter(Boolean)
@@ -870,9 +968,7 @@ exports.optimizeProductThumbnails = onCall(
 exports.optimizeProductDetailImages = onCall(
   { region: 'asia-northeast3', invoker: 'public' },
   async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in is required to optimize product images.');
-    }
+    requireAdmin(request);
 
     const productId = String(request.data?.productId || '').trim();
     if (!productId) {

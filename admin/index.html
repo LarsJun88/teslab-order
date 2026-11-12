@@ -429,19 +429,20 @@
 
     <!-- VIEW 3: ADMIN DASHBOARD -->
     <div id="view-admin-dashboard" class="space-y-6 hidden">
-        <div id="admin-auth-panel" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 max-w-sm mx-auto text-center space-y-4">
+        <form id="admin-auth-panel" onsubmit="event.preventDefault(); authenticateAdmin()" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 max-w-sm mx-auto text-center space-y-4">
             <i class="fa-solid fa-lock text-rose-500 text-3xl"></i>
             <div>
-                <h3 class="font-bold text-slate-800 text-base">테슬랩 운영진 보안검증</h3>
-                <p class="text-[11px] text-slate-400 mt-1">관리자 비밀번호를 입력해 주세요.</p>
+                <h3 class="font-bold text-slate-800 text-base">테슬랩 관리자 로그인</h3>
             </div>
-            <input type="password" id="admin_key" placeholder="비밀번호 입력" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm outline-none focus:border-indigo-500">
-            <button onclick="authenticateAdmin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition">
-                보안 인증 및 대시보드 진입
+            <input type="email" id="admin-email" required autocomplete="username" aria-label="관리자 이메일" placeholder="관리자 이메일" class="w-full rounded-xl border p-3 text-sm">
+            <input type="password" autocomplete="current-password" id="admin_key" placeholder="비밀번호 입력" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm outline-none focus:border-indigo-500">
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                로그인
             </button>
-        </div>
+        </form>
 
         <div id="admin-content-panel" class="hidden space-y-6">
+            <div class="text-right"><button type="button" onclick="logoutAdmin()" class="text-sm underline">관리자 로그아웃</button></div>
             <div class="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-200 bg-white p-2 rounded-xl shadow-sm gap-2">
                 <button onclick="switchAdminSubTab('orders')" id="subtab-orders" class="flex-1 py-2 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50/70 text-center transition">
                     <i class="fa-solid fa-rectangle-list mr-1.5"></i> 주문 관리
@@ -464,6 +465,21 @@
 
             <!-- Admin Orders Sub-Tab -->
             <div id="admin-section-orders" class="space-y-6">
+                <details class="bg-white border rounded-lg p-4">
+                    <summary class="font-bold cursor-pointer">한진 송장 일괄 입력</summary>
+                    <fieldset id="hanjin-fields" class="mt-3 space-y-3 text-sm">
+                        <label>포커스 출고 파일 <input type="file" id="hanjin-file" accept=".xlsx,.csv,.tsv" onchange="openWaybillFile(this.files[0])"></label>
+                        <div id="hanjin-columns" class="hidden flex flex-wrap gap-3">
+                            <label>시트 <select id="hanjin-sheet"></select></label>
+                            <label>제목 행 <input id="hanjin-header" type="number" min="1" value="1" class="w-14 border"></label>
+                            <label>테슬랩 주문번호 열 <select id="hanjin-order"></select></label>
+                            <label>송장번호 열 <select id="hanjin-waybill"></select></label>
+                        </div>
+                        <p id="hanjin-summary" aria-live="polite"></p>
+                        <pre id="hanjin-preview" class="max-h-56 overflow-auto text-xs"></pre>
+                        <button id="hanjin-apply" type="button" disabled class="bg-indigo-600 text-white rounded px-3 py-2 disabled:opacity-50">일치한 송장 적용</button>
+                    </fieldset>
+                </details>
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
                         <div>
@@ -563,7 +579,7 @@
                                 <th class="p-4">선택 품목</th>
                                 <th class="p-4">금액</th>
                                 <th class="p-4">배송 주소</th>
-                                <th class="p-4 text-center">상태 / 복사 / 송장 / 수정 / 삭제</th>
+                                <th class="p-4 text-center">상태 / 복사 / 송장 / 수정 / 취소</th>
                             </tr>
                             </thead>
                             <tbody id="admin-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
@@ -603,7 +619,7 @@
                                 <th class="p-4">선택 품목</th>
                                 <th class="p-4">금액</th>
                                 <th class="p-4">배송 주소</th>
-                                <th class="p-4 text-center">상태 / 복사 / 송장 / 수정 / 삭제</th>
+                                <th class="p-4 text-center">상태 / 복사 / 송장 / 수정</th>
                             </tr>
                             </thead>
                             <tbody id="completed-table-body" class="text-xs text-slate-600 divide-y divide-slate-150">
@@ -1148,7 +1164,8 @@
     import {
         getAuth,
         signInAnonymously,
-        signInWithCustomToken
+        signInWithCustomToken,
+        signInWithEmailAndPassword, signOut
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
         getFirestore,
@@ -1156,7 +1173,6 @@
         getDoc,
         setDoc,
         updateDoc,
-        deleteDoc,
         collection,
         getDocsFromServer,
         query,
@@ -1188,8 +1204,6 @@
     const DEFAULT_IMAGE_URL = '../assets/product-placeholder.svg';
     let productImageObserver = null;
 
-    // Temporary client-side password gate. Replace with Firebase administrator authentication.
-    const ADMIN_PASSWORD_HASH = "6080fc41ca9310da4a4cbc54052c79d89f8bea0cdaf2b3f121a7f9ff5e8584ef";
 
     let app = null;
     let auth = null;
@@ -1389,7 +1403,7 @@
     const CONTRACT_SHIPPING_FEE = 2800;
 
     try {
-        app = initializeApp(firebaseConfig);
+        app = initializeApp(firebaseConfig, "teslab-admin");
         auth = getAuth(app);
         db = getFirestore(app);
         storage = getStorage(app);
@@ -1467,12 +1481,6 @@
         if (!db || !submitOrderWithInventoryCall) throw new Error('주문 서버 연결을 준비하지 못했습니다.');
     }
 
-    async function sha256(message) {
-        const msgBuffer = new TextEncoder().encode(message);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
 
 
     function updateThemeToggle() {
@@ -1903,34 +1911,17 @@
         const catalogDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'catalog');
         const noticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'notice');
         const shippingNoticeDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'shippingNotice');
-        const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
-
         try {
-            const securitySnap = await getDoc(securityDocRef);
-
-            if (securitySnap.exists()) {
-                const savedHash = securitySnap.data().adminHash || ADMIN_PASSWORD_HASH;
-                if (savedHash !== ADMIN_PASSWORD_HASH) {
-                    await setDoc(securityDocRef, { adminHash: ADMIN_PASSWORD_HASH });
-                }
-            } else {
-                await setDoc(securityDocRef, { adminHash: ADMIN_PASSWORD_HASH });
-            }
-
             const noticeSnap = await getDoc(noticeDocRef);
             if (noticeSnap.exists()) {
                 localNotice = noticeSnap.data().text || localNotice;
                 localStorage.setItem('teslap_notice_cache', localNotice);
-            } else {
-                await setDoc(noticeDocRef, { text: localNotice });
             }
             renderNoticeUI(localNotice);
 
             const shippingNoticeSnap = await getDoc(shippingNoticeDocRef);
             if (shippingNoticeSnap.exists()) {
                 localShippingNotice = normalizeShippingNoticeConfig(shippingNoticeSnap.data());
-            } else {
-                await setDoc(shippingNoticeDocRef, localShippingNotice);
             }
             localStorage.setItem('teslap_shipping_notice_cache', JSON.stringify(localShippingNotice));
             renderShippingNoticeConfigUI();
@@ -1943,7 +1934,6 @@
                     ...product,
                     stock: getProductStock(product)
                 }));
-                await setDoc(catalogDocRef, { products: seededProducts });
                 applyCatalogProducts(seededProducts);
             }
 
@@ -2551,34 +2541,10 @@
         `;
         resultContainer.classList.remove('hidden');
 
-        let foundOrders = [];
-        const isTargetOrder = order =>
-            normalizeLookupName(order?.ordererName) === targetName &&
-            normalizePhoneDigits(order?.ordererPhone) === targetPhone;
-
-        const addMatchingOrders = snapshot => {
-            snapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                if (isTargetOrder(data)) foundOrders.push(data);
-            });
-        };
-
         try {
             await ensureOrderServerConnection();
-            const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-            const lookupKey = buildOrderLookupKey(trackName, trackPhone);
-
-            addMatchingOrders(await getDocsFromServer(query(ordersRef, where('orderLookupKey', '==', lookupKey))));
-
-            if (foundOrders.length === 0) {
-                addMatchingOrders(await getDocsFromServer(query(ordersRef, where('ordererPhoneDigits', '==', targetPhone))));
-            }
-
-            if (foundOrders.length === 0) {
-                addMatchingOrders(await getDocsFromServer(query(ordersRef, where('ordererPhone', '==', trackPhone))));
-            }
-
-            if (requestId === orderLookupRequest) renderFoundOrders(dedupeOrdersById(foundOrders));
+            const { data } = await httpsCallable(cloudFunctions, "lookupCustomerOrders")({ name: trackName, phone: trackPhone });
+            if (requestId === orderLookupRequest) renderFoundOrders(data.orders);
         } catch (err) {
             console.warn("Order lookup failed.", err);
             if (requestId !== orderLookupRequest) return;
@@ -2631,9 +2597,9 @@
                     <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
                         <div>
                             <span class="text-[10px] text-slate-400 block font-mono">주문코드</span>
-                            <strong class="font-mono text-slate-800 text-sm break-all">${order.orderId}</strong>
+                            <strong class="font-mono text-slate-800 text-sm break-all">${escapeHtml(order.orderId)}</strong>
                         </div>
-                        <span class="px-2.5 py-1.5 rounded-lg text-xs font-bold ${badgeClass}">${order.status}</span>
+                        <span class="px-2.5 py-1.5 rounded-lg text-xs font-bold ${badgeClass}">${escapeHtml(order.status)}</span>
                     </div>
 
                     <div class="space-y-1">
@@ -2641,8 +2607,8 @@
                         <div class="space-y-1 bg-white p-2.5 rounded border border-slate-100">
                             ${order.cart.map(itm => `
                                 <div class="flex justify-between">
-                                    <span class="font-medium text-slate-700">${itm.optionName}</span>
-                                    <span class="font-mono text-slate-400">x${itm.quantity}</span>
+                                    <span class="font-medium text-slate-700">${escapeHtml(itm.optionName)}</span>
+                                    <span class="font-mono text-slate-400">x${Number(itm.quantity)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -2650,8 +2616,8 @@
 
                     <div class="space-y-1.5 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
                         <span class="text-[10px] font-bold text-indigo-700 block">배송 정보</span>
-                        <p><strong>수령인:</strong> ${order.shipName}</p>
-                        <p><strong>배송지:</strong> [${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
+                        <p><strong>수령인:</strong> ${escapeHtml(order.shipName)}</p>
+                        <p><strong>배송지:</strong> [${escapeHtml(order.postalCode)}] ${escapeHtml(order.addressBasic)} ${escapeHtml(order.addressDetail)}</p>
                         <p class="pt-1.5 border-t border-slate-200/50">
                             <strong class="mr-1.5">운송장:</strong>
                             <span class="text-xs align-baseline">
@@ -2664,50 +2630,33 @@
         }).join('');
     }
 
+    window.logoutAdmin = async function() {
+        await signOut(auth);
+        location.reload();
+    };
+
     window.authenticateAdmin = async function() {
-        const passwordInput = document.getElementById('admin_key').value.trim();
-
-        if (!passwordInput) {
-            showToast("⚠️ 관리자 비밀번호를 입력해 주세요.");
-            return;
-        }
-
+        const email = document.getElementById('admin-email').value.trim();
+        const password = document.getElementById('admin_key');
         try {
-            const enteredHash = await sha256(passwordInput);
-
-            if (enteredHash === ADMIN_PASSWORD_HASH) {
-                isAdminAuthenticated = true;
-
-                document.getElementById('admin-auth-panel').classList.add('hidden');
-                document.getElementById('admin-content-panel').classList.remove('hidden');
-
-                showToast("🔑 관리자 인증 성공");
-
-                if (!isDemoMode && db) {
-                    try {
-                        const securityDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'security');
-                        await setDoc(securityDocRef, { adminHash: ADMIN_PASSWORD_HASH });
-                    } catch (dbErr) {
-                        console.warn("Password hash sync failed.", dbErr);
-                    }
-                }
-
-                await loadAdminOrders();
-                renderAdminProducts();
-                startOrderNotificationListenerIfReady();
-
-                const pendingImageOptimizationCount = products.filter(needsProductDetailOptimization).length;
-                if (pendingImageOptimizationCount > 0) {
-                    setTimeout(() => {
-                        showToast(`${pendingImageOptimizationCount}개 상품의 상세사진이 원본입니다. 상품/공지에서 상품 상세사진 전체 최적화를 실행해 주세요.`);
-                    }, 500);
-                }
-            } else {
-                showToast("❌ 비밀번호가 일치하지 않습니다.");
+            if (authRequest) await authRequest;
+            const { user } = await signInWithEmailAndPassword(auth, email, password.value);
+            password.value = '';
+            if ((await user.getIdTokenResult(true)).claims.admin !== true) {
+                await signOut(auth);
+                currentUser = null;
+                throw new Error("관리자 권한이 등록되지 않은 계정입니다.");
             }
+            currentUser = user;
+            isDemoMode = false;
+            isAdminAuthenticated = true;
+            document.getElementById('admin-auth-panel').classList.add('hidden');
+            document.getElementById('admin-content-panel').classList.remove('hidden');
+            await loadAdminOrders();
+            renderAdminProducts();
+            startOrderNotificationListenerIfReady();
         } catch (err) {
-            console.error("Admin auth exception.", err);
-            showToast("❌ 인증 도중 오류가 발생했습니다.");
+            showToast(err.code ? "이메일과 비밀번호, 로그인 설정을 확인해 주세요." : err.message);
         }
     };
 
@@ -2840,7 +2789,7 @@
                 const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
                 const querySnapshot = await getDocsFromServer(ordersRef);
                 const nextOrders = [];
-                querySnapshot.forEach(docSnap => nextOrders.push(docSnap.data()));
+                querySnapshot.forEach(docSnap => nextOrders.push({ ...docSnap.data(), orderId: docSnap.id }));
                 globalOrders = nextOrders;
                 hasLoadedAdminOrders = true;
                 document.getElementById('admin-orders-error').classList.add('hidden');
@@ -2887,32 +2836,32 @@
 
         return orders.map(order => {
             const cartOverview = Array.isArray(order.cart)
-                ? order.cart.map(item => `${item.optionName} x${item.quantity}`).join('<br>')
+                ? order.cart.map(item => `${escapeHtml(item.optionName)} x${Number(item.quantity)}`).join('<br>')
                 : '-';
 
             return `
                 <tr class="hover:bg-slate-50 transition border-b border-slate-100 last:border-0 text-xs">
                     <td class="p-3 text-slate-500 font-mono">
-                        <span class="font-bold text-slate-800 block">${order.orderId || '-'}</span>
-                        <span class="text-[10px] block text-slate-400">${order.createdAt || '-'}</span>
+                        <span class="font-bold text-slate-800 block">${escapeHtml(order.orderId || '-')}</span>
+                        <span class="text-[10px] block text-slate-400">${escapeHtml(order.createdAt || '-')}</span>
                     </td>
                     <td class="p-3">
-                        <span class="font-bold text-slate-800 block">${order.ordererName || '-'}</span>
-                        <span class="text-[10px] text-indigo-600 block font-semibold">@${order.ordererNickname || '-'}</span>
-                        <span class="text-[10px] text-amber-700 block font-medium">차량: ${order.ordererCarInfo || '미기입'}</span>
-                        <span class="text-[10px] text-slate-400 block">${order.ordererPhone || '-'}</span>
+                        <span class="font-bold text-slate-800 block">${escapeHtml(order.ordererName || '-')}</span>
+                        <span class="text-[10px] text-indigo-600 block font-semibold">@${escapeHtml(order.ordererNickname || '-')}</span>
+                        <span class="text-[10px] text-amber-700 block font-medium">차량: ${escapeHtml(order.ordererCarInfo || '미기입')}</span>
+                        <span class="text-[10px] text-slate-400 block">${escapeHtml(order.ordererPhone || '-')}</span>
                     </td>
                     <td class="p-3 leading-relaxed text-[11px] font-medium text-slate-600 font-mono">${cartOverview}</td>
                     <td class="p-3">
                         <span class="font-bold text-slate-900 block font-mono">${Number(order.finalTotal || 0).toLocaleString()}원</span>
-                        <span class="text-[10px] text-slate-400 block">입금자: ${order.depositorName || '-'}</span>
+                        <span class="text-[10px] text-slate-400 block">입금자: ${escapeHtml(order.depositorName || '-')}</span>
                     </td>
                     <td class="p-3 max-w-[200px] truncate leading-normal text-[11px]">
-                        <p class="text-slate-700 truncate font-semibold" title="${order.addressBasic || ''} ${order.addressDetail || ''}">[${order.postalCode || '-'}] ${order.addressBasic || ''} ${order.addressDetail || ''}</p>
-                        <p class="text-[10px] text-amber-600 italic truncate" title="${order.shippingMemo || ''}">메모: ${order.shippingMemo || '없음'}</p>
+                        <p class="text-slate-700 truncate font-semibold" title="${escapeHtml(order.addressBasic || '')} ${escapeHtml(order.addressDetail || '')}">[${escapeHtml(order.postalCode || '-')}] ${escapeHtml(order.addressBasic || '')} ${escapeHtml(order.addressDetail || '')}</p>
+                        <p class="text-[10px] text-amber-600 italic truncate" title="${escapeHtml(order.shippingMemo || '')}">메모: ${escapeHtml(order.shippingMemo || '없음')}</p>
                     </td>
                     <td class="p-3 text-center space-y-2 min-w-[210px]">
-                        <div class="flex items-stretch gap-1">
+                        ${!/^ORD-\d{6}-(?:\d{4,5}|[a-f0-9]{32})$/.test(order.orderId) ? '주문번호 확인 필요' : order.status === "주문취소" ? `<strong>주문취소</strong><p>${escapeHtml(order.cancelReason || "")}</p>` : `<div class="flex items-stretch gap-1">
                             <select onchange="updateOrderStatus('${order.orderId}', this.value)" aria-label="주문 상태" class="w-[6.5rem] shrink-0 rounded border border-slate-200 px-2 py-1 text-[11px] font-bold whitespace-nowrap focus:border-indigo-500 bg-white">
                             <option value="입금대기" ${order.status === "입금대기" ? "selected" : ""}>입금대기</option>
                             <option value="입금완료" ${order.status === "입금완료" ? "selected" : ""}>입금완료</option>
@@ -2934,7 +2883,7 @@
                             </select>
 
                             <div class="flex gap-1">
-                                <input type="text" id="tracking-input-${order.orderId}" value="${order.trackingNumber || ''}" placeholder="송장번호" class="w-full text-center font-mono rounded border border-slate-200 px-1 py-1 text-[10px] outline-none focus:border-indigo-500 bg-white">
+                                <input type="text" id="tracking-input-${order.orderId}" value="${escapeHtml(order.trackingNumber || '')}" placeholder="송장번호" class="w-full text-center font-mono rounded border border-slate-200 px-1 py-1 text-[10px] outline-none focus:border-indigo-500 bg-white">
                                 <button onclick="saveTrackingNumber('${order.orderId}')" class="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold shrink-0 hover:bg-slate-800 transition">저장</button>
                             </div>
                         </div>
@@ -2943,10 +2892,10 @@
                             <button type="button" onclick="openAdminOrderEdit('${order.orderId}')" class="flex-1 px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[10px] font-extrabold transition" title="주문 정보와 품목 수정">
                                 <i class="fa-solid fa-pen mr-1"></i>수정
                             </button>
-                            <button onclick="deleteOrder('${order.orderId}')" class="flex-1 px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-extrabold transition border border-rose-100">
-                                <i class="fa-solid fa-trash-can mr-1"></i>삭제
-                            </button>
-                        </div>
+                            ${["입금대기","입금완료","배송준비"].includes(order.status) && !order.trackingNumber ? `<button onclick="cancelAdminOrder('${order.orderId}')" class="flex-1 px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-extrabold transition border border-rose-100">
+                                <i class="fa-solid fa-trash-can mr-1"></i>주문 취소
+                            </button>` : ""}
+                        </div>`}
                     </td>
                 </tr>
             `;
@@ -2955,7 +2904,7 @@
 
     function updateOrderSummaryStats(orders) {
         const totalCount = orders.length;
-        const totalSum = orders.reduce((acc, order) => acc + Number(order.finalTotal || 0), 0);
+        const totalSum = orders.reduce((acc, order) => acc + (order.status === '주문취소' ? 0 : Number(order.finalTotal || 0)), 0);
         const islandCount = orders.filter(order => order.isIslandShipping).length;
         const pendingCount = orders.filter(order => order.status === "입금대기").length;
 
@@ -3088,6 +3037,7 @@
 
         const statuses = [
             { name: '전체', className: 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200' },
+            { name: '주문취소', className: 'border-rose-200 text-rose-700' },
             { name: '입금대기', className: 'border-rose-100 bg-rose-50 text-rose-700 hover:bg-rose-100' },
             { name: '입금완료', className: 'border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100' },
             { name: '배송준비', className: 'border-sky-100 bg-sky-50 text-sky-700 hover:bg-sky-100' },
@@ -3097,7 +3047,7 @@
 
         container.innerHTML = statuses.map(status => {
             const count = status.name === '전체'
-                ? activeOrders.length
+                ? activeOrders.filter(order => order.status !== '주문취소').length
                 : activeOrders.filter(order => order.status === status.name).length;
             const selected = adminOrderStatusFilter === status.name;
             const selectedClass = selected
@@ -3122,7 +3072,7 @@
 
         const visibleOrders = allOrders
             .filter(order => order.status !== "배송완료")
-            .filter(order => adminOrderStatusFilter === '전체' || order.status === adminOrderStatusFilter)
+            .filter(order => adminOrderStatusFilter === '전체' ? order.status !== '주문취소' : order.status === adminOrderStatusFilter)
             .filter(order => matchesOrderSearch(order, query))
             .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
@@ -3170,7 +3120,7 @@
     };
 
     window.setAdminOrderStatusFilter = function(status) {
-        const allowedStatuses = new Set(['전체', '입금대기', '입금완료', '배송준비', '배송중']);
+        const allowedStatuses = new Set(['전체', '입금대기', '입금완료', '배송준비', '배송중', '주문취소']);
         if (!allowedStatuses.has(status)) return;
 
         adminOrderStatusFilter = status;
@@ -3600,46 +3550,22 @@
         }
     };
 
-    window.deleteOrder = async function(orderId) {
-        if (!isAdminAuthenticated) {
-            showToast("❌ 관리자 인증 후 이용할 수 있습니다.");
-            return;
-        }
+    window.openWaybillFile = async function(file) {
+        if (!isAdminAuthenticated || !file) return;
+        const { openImport } = await import('../assets/hanjin-import.mjs');
+        await openImport(file, () => globalOrders, row => httpsCallable(cloudFunctions, 'importHanjinWaybill')(row), loadAdminOrders);
+    };
 
-        const targetOrder =
-            globalOrders.find(order => order.orderId === orderId) ||
-            localOrders.find(order => order.orderId === orderId);
-
-        const orderInfoText = targetOrder
-            ? `${targetOrder.ordererName || '주문자'} / ${Number(targetOrder.finalTotal || 0).toLocaleString()}원`
-            : orderId;
-
-        const confirmDelete = confirm(
-            `정말 이 주문을 삭제할까요?\n\n주문번호: ${orderId}\n주문정보: ${orderInfoText}\n\n삭제된 주문은 복구할 수 없습니다.`
-        );
-
-        if (!confirmDelete) return;
-
-        if (isDemoMode) {
-            localOrders = localOrders.filter(order => order.orderId !== orderId);
-            globalOrders = globalOrders.filter(order => order.orderId !== orderId);
-
-            renderAdminOrderViews();
-            showToast("🗑️ 주문이 삭제되었습니다.");
-            return;
-        }
-
+    window.cancelAdminOrder = async function(orderId) {
+        const reason = prompt("주문 " + orderId + "을 취소합니다. 취소 사유를 입력해 주세요.");
+        if (!reason?.trim()) return;
         try {
-            const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-            await deleteDoc(orderRef);
-
-            globalOrders = globalOrders.filter(order => order.orderId !== orderId);
-
+            const { data } = await httpsCallable(cloudFunctions, "cancelOrderWithInventory")({ orderId, reason });
+            applyOrderPatchInMemory(orderId, { status: "주문취소", cancelReason: data.cancelReason });
             renderAdminOrderViews();
-            showToast("🗑️ 주문이 삭제되었습니다.");
+            showToast(data.restored ? "주문을 취소하고 재고를 복구했습니다." : "주문을 취소했습니다. 재고 차감 기록이 없는 주문입니다.");
         } catch (err) {
-            console.error("Order delete failed.", err);
-            showToast("❌ 주문 삭제 중 오류가 발생했습니다.");
+            showToast(err.message || "주문 취소 실패");
         }
     };
 
@@ -4022,7 +3948,7 @@
         renderStatsControls(globalOrders);
         renderStatsChartControls();
 
-        const targetOrders = getOrdersForActiveStatsMode(globalOrders);
+        const targetOrders = getOrdersForActiveStatsMode(globalOrders).filter(order => order.status !== '주문취소');
         const stats = {};
 
         products.forEach(product => {
@@ -5454,7 +5380,7 @@
 
         toast.innerHTML = `
             <i class="fa-solid fa-bell text-indigo-400 shrink-0"></i>
-            <span class="font-semibold">${message}</span>
+            <span class="font-semibold">${escapeHtml(message)}</span>
         `;
 
         container.appendChild(toast);

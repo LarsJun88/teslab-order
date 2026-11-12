@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function admin() { return request.auth != null && request.auth.token.admin == true; }
+    match /artifacts/tkc-co-order-2026/public/data/config/{key} {
+      allow read: if key in ['catalog', 'notice', 'shippingNotice'];
+      allow create, update: if admin() && key in ['catalog', 'notice', 'shippingNotice'];
+    }
+    match /artifacts/tkc-co-order-2026/public/data/orders/{orderId} {
+      allow read: if admin();
+      allow update: if admin() && resource.data.status != '주문취소'
+        && request.resource.data.status in ['입금대기','입금완료','배송준비','배송중','배송완료']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','trackingNumber','courier']);
+    }
+  }
+}

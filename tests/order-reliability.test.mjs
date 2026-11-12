@@ -38,7 +38,7 @@ function backendHarness() {
         const execution = queue.then(async () => {
             const pending = [];
             const result = await callback({
-                async get(name) { return { exists: records.has(name), data: () => structuredClone(records.get(name)) }; },
+                async get(name) { return name?.get ? name.get() : { exists: records.has(name), data: () => structuredClone(records.get(name)) }; },
                 update(name, value) { pending.push([name, { ...records.get(name), ...structuredClone(value) }]); },
                 set(name, value) { pending.push([name, structuredClone(value)]); }
             });
@@ -49,6 +49,17 @@ function backendHarness() {
         queue = execution.catch(() => {});
         return execution;
     } };
+    db.collection = base => ({
+        doc: id => base + '/' + id,
+        where: (field, op, value) => {
+            const query = { limit: () => query, async get() {
+                const docs = [...records].filter(([path, order]) => path.startsWith(base + '/') && order[field] === value)
+                    .map(([path, order]) => ({ id: path.split('/').pop(), data: () => order }));
+                return { docs, empty: docs.length === 0 };
+            } };
+            return query;
+        }
+    });
     class HttpsError extends Error {
         constructor(code, message, details) { super(message); this.code = code; this.details = details; }
     }
@@ -95,6 +106,10 @@ function pageHarness(file) {
         localStorage: memoryStorage(), sessionStorage: memoryStorage(), addEventListener() {},
         initializeApp: () => ({}), getAuth: () => ({}), getFirestore: () => ({}), getStorage: () => ({}), getFunctions: () => ({}),
         httpsCallable: (_, name) => async ({ order } = {}) => {
+            if (name === 'lookupCustomerOrders') {
+                if (capture.failRead) throw Error('Query failure');
+                return { data: { orders: [] } };
+            }
             if (name !== 'submitOrderWithInventory') return { data: {} };
             capture.sends.push(order); return capture.send(order);
         },
@@ -105,7 +120,7 @@ function pageHarness(file) {
             capture.readCalls++;
             if (capture.failRead) throw Error('Query failure');
             const entries = capture.queryOrders.filter(o => (ref.filters || []).every(f => o[f.field] === f.value));
-            return { forEach: fn => entries.forEach(data => fn({ data: () => data })) };
+            return { forEach: fn => entries.forEach(data => fn({ id: data.orderId, data: () => data })) };
         },
         getDoc: async () => { throw Error('Unexpected document read'); }, onSnapshot: () => () => {}
     };
@@ -173,13 +188,74 @@ test('five-digit IDs do not reuse a legacy four-digit number and keep retry rece
     assert.equal(app.records.size - 1, 2);
 });
 
+test('admin-only cancellation restores the exact option once and excludes shipped orders', async () => {
+    const app = backendHarness();
+    const order = fixtureOrder();
+    await app.submit(order);
+    const cancel = (admin, orderId = order.orderId) => app.context.exports.cancelOrderWithInventory({
+        auth: { uid: 'staff', token: { admin } }, data: { orderId, reason: '중복 접수' }
+    });
+    await assert.rejects(cancel(false), e => e.code === 'permission-denied');
+    const shipped = fixtureOrder(1);
+    await app.submit(shipped);
+    app.records.get(orderPath + shipped.orderId).status = '배송중';
+    await assert.rejects(cancel(true, shipped.orderId), e => e.code === 'failed-precondition');
+    await Promise.all([cancel(true), cancel(true)]);
+    const product = app.records.get(catalogPath).products[0];
+    assert.equal(product.optionStocks.Black, 999);
+    assert.equal(product.optionStocks.Red, 999);
+    assert.equal(app.records.get(orderPath + order.orderId).status, '주문취소');
+    await assert.rejects(app.context.exports.updateOrderWithInventory({ auth: { uid: 'buyer' }, data: {} }), e => e.code === 'permission-denied');
+});
+
+test('Hanjin preview rejects duplicate, unmatched, shipped and conflicting rows', async () => {
+    const { matchRows } = await import('../assets/hanjin-import.mjs');
+    const ids = Array.from({ length: 6 }, (_, i) => 'ORD-261112-0000' + i);
+    const orders = ids.slice(0, 5).map(orderId => ({ orderId, status: '입금완료' }));
+    orders[3].status = '주문취소';
+    orders[4].trackingNumber = '123456789099';
+    const rows = [['ID','번호'], ...ids.map((id, i) => [id, '12345678900' + (i === 2 ? 1 : i)])];
+    const result = matchRows(rows, 0, 0, 1, orders);
+    assert.deepEqual(result.filter(r => !r.reason).map(r => r.orderId), [ids[0]]);
+});
+
+test('customer lookup matches both fields and omits private order fields', async () => {
+    const app = backendHarness();
+    const order = fixtureOrder();
+    await app.submit(order);
+    const lookup = name => app.context.exports.lookupCustomerOrders({ auth: { uid: 'buyer' }, data: { name, phone: order.ordererPhone } });
+    assert.equal((await lookup('Other')).orders.length, 0);
+    const result = (await lookup(order.ordererName)).orders;
+    assert.equal(result.length, 1);
+    assert.equal(result[0].orderId, order.orderId);
+    assert.equal(result[0].depositorName, undefined);
+    assert.equal(result[0].inventoryCommittedBy, undefined);
+});
+
+test('waybill commit rechecks status and conflicts and handles retries', async () => {
+    const app = backendHarness();
+    const a = fixtureOrder(0), b = fixtureOrder(1);
+    await app.submit(a);
+    await app.submit(b);
+    const save = (orderId, admin = true) => app.context.exports.importHanjinWaybill({
+        auth: { uid: 'staff', token: { admin } }, data: { orderId, trackingNumber: '123456789012' }
+    });
+    await assert.rejects(save(a.orderId, false), e => e.code === 'permission-denied');
+    await assert.rejects(save(a.orderId), e => e.code === 'failed-precondition');
+    for (const id of [a.orderId, b.orderId]) app.records.get(orderPath + id).status = '입금완료';
+    assert.equal((await save(a.orderId)).changed, true);
+    assert.equal(app.records.get(orderPath + a.orderId).status, '배송중');
+    assert.equal((await save(a.orderId)).changed, false);
+    await assert.rejects(save(b.orderId), e => e.code === 'already-exists');
+});
+
 test('legacy IDs stay valid and modern IDs remain editable', async () => {
     const app = backendHarness();
     for (const orderId of ['ORD-260906-1234', createOrderId()]) {
         const order = { ...fixtureOrder(), orderId };
         await app.submit(order);
         const details = { ...order, shippingMemo: 'Updated memo' };
-        const result = await app.context.exports.updateOrderWithInventory({ auth: { uid: 'test-user' }, data: { orderId, details, cart: [{ productId: order.cart[0].productId, quantity: 1, sourceIndex: 0 }] } });
+        const result = await app.context.exports.updateOrderWithInventory({ auth: { uid: 'staff', token: { admin: true } }, data: { orderId, details, cart: [{ productId: order.cart[0].productId, quantity: 1, sourceIndex: 0 }] } });
         assert.equal(result.order.shippingMemo, 'Updated memo');
     }
 });

@@ -2051,34 +2051,10 @@
         `;
         resultContainer.classList.remove('hidden');
 
-        let foundOrders = [];
-        const isTargetOrder = order =>
-            normalizeLookupName(order?.ordererName) === targetName &&
-            normalizePhoneDigits(order?.ordererPhone) === targetPhone;
-
-        const addMatchingOrders = snapshot => {
-            snapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                if (isTargetOrder(data)) foundOrders.push(data);
-            });
-        };
-
         try {
             await ensureOrderServerConnection();
-            const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-            const lookupKey = buildOrderLookupKey(trackName, trackPhone);
-
-            addMatchingOrders(await getDocsFromServer(query(ordersRef, where('orderLookupKey', '==', lookupKey))));
-
-            if (foundOrders.length === 0) {
-                addMatchingOrders(await getDocsFromServer(query(ordersRef, where('ordererPhoneDigits', '==', targetPhone))));
-            }
-
-            if (foundOrders.length === 0) {
-                addMatchingOrders(await getDocsFromServer(query(ordersRef, where('ordererPhone', '==', trackPhone))));
-            }
-
-            if (requestId === orderLookupRequest) renderFoundOrders(dedupeOrdersById(foundOrders));
+            const { data } = await httpsCallable(cloudFunctions, "lookupCustomerOrders")({ name: trackName, phone: trackPhone });
+            if (requestId === orderLookupRequest) renderFoundOrders(data.orders);
         } catch (err) {
             console.warn("Order lookup failed.", err);
             if (requestId !== orderLookupRequest) return;
@@ -2131,9 +2107,9 @@
                     <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
                         <div>
                             <span class="text-[10px] text-slate-400 block font-mono">주문코드</span>
-                            <strong class="font-mono text-slate-800 text-sm break-all">${order.orderId}</strong>
+                            <strong class="font-mono text-slate-800 text-sm break-all">${escapeHtml(order.orderId)}</strong>
                         </div>
-                        <span class="px-2.5 py-1.5 rounded-lg text-xs font-bold ${badgeClass}">${order.status}</span>
+                        <span class="px-2.5 py-1.5 rounded-lg text-xs font-bold ${badgeClass}">${escapeHtml(order.status)}</span>
                     </div>
 
                     <div class="space-y-1">
@@ -2141,8 +2117,8 @@
                         <div class="space-y-1 bg-white p-2.5 rounded border border-slate-100">
                             ${order.cart.map(itm => `
                                 <div class="flex justify-between">
-                                    <span class="font-medium text-slate-700">${itm.optionName}</span>
-                                    <span class="font-mono text-slate-400">x${itm.quantity}</span>
+                                    <span class="font-medium text-slate-700">${escapeHtml(itm.optionName)}</span>
+                                    <span class="font-mono text-slate-400">x${Number(itm.quantity)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -2150,8 +2126,8 @@
 
                     <div class="space-y-1.5 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
                         <span class="text-[10px] font-bold text-indigo-700 block">배송 정보</span>
-                        <p><strong>수령인:</strong> ${order.shipName}</p>
-                        <p><strong>배송지:</strong> [${order.postalCode}] ${order.addressBasic} ${order.addressDetail}</p>
+                        <p><strong>수령인:</strong> ${escapeHtml(order.shipName)}</p>
+                        <p><strong>배송지:</strong> [${escapeHtml(order.postalCode)}] ${escapeHtml(order.addressBasic)} ${escapeHtml(order.addressDetail)}</p>
                         <p class="pt-1.5 border-t border-slate-200/50">
                             <strong class="mr-1.5">운송장:</strong>
                             <span class="text-xs align-baseline">
