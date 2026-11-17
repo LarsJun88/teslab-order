@@ -3645,7 +3645,11 @@
 
     window.openWaybillFile = async function(file) {
         if (!isAdminAuthenticated || !file) return;
-        const { openImport } = await import('../assets/hanjin-import.mjs');
+        if (!await loadAdminOrders()) {
+            showToast('최신 주문을 불러오지 못했습니다.');
+            return;
+        }
+        const { openImport } = await import('../assets/hanjin-import.mjs?v=2');
         await openImport(file, () => globalOrders, row => httpsCallable(cloudFunctions, 'importHanjinWaybill')(row), loadAdminOrders);
     };
 

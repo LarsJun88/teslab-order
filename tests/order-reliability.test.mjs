@@ -243,6 +243,11 @@ test('waybill commit rechecks status and conflicts and handles retries', async (
     await assert.rejects(save(a.orderId, false), e => e.code === 'permission-denied');
     await assert.rejects(save(a.orderId), e => e.code === 'failed-precondition');
     for (const id of [a.orderId, b.orderId]) app.records.get(orderPath + id).status = '입금완료';
+    await assert.rejects(app.context.exports.importHanjinWaybill({
+        auth: { uid: 'staff', token: { admin: true } },
+        data: { orderId: a.orderId, trackingNumber: '123456789012', expected: { shipName: '다른 수령인' } }
+    }), e => e.code === 'failed-precondition');
+    assert.equal(app.records.get(orderPath + a.orderId).trackingNumber, '');
     assert.equal((await save(a.orderId)).changed, true);
     assert.equal(app.records.get(orderPath + a.orderId).status, '배송중');
     assert.equal((await save(a.orderId)).changed, false);

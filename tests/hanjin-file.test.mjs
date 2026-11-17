@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { openImport } from '../assets/hanjin-import.mjs';
+import { openImport, matchPickingRows } from '../assets/hanjin-import.mjs';
 
 function reader(name) {
     const source = readFileSync(new URL('../assets/' + name + '.min.js', import.meta.url), 'utf8');
@@ -42,4 +42,19 @@ test('XLSX and quoted CSV files preview and submit only matched rows', async () 
         await el('hanjin-apply').onclick();
         assert.deepEqual(saved, [{ orderId: id, trackingNumber: '001234567890' }]);
     }
+});
+
+test('masked Hanjin picking rows only match a unique recipient, postcode, address and items', () => {
+    const columns = { waybill: 1, name: 2, zip: 6, address: 7, items: 10 };
+    const row = ['1', '123456789012', '홍길*', '', '', '', '01234', '서울 강남로 10 *****', '', '', '도어도크 (블랙) x1 '];
+    const order = { orderId: 'ORD-261117-12345', status: '배송준비', shipName: '홍길동',
+        postalCode: '01234', addressBasic: '서울 강남로 10', addressDetail: '101호',
+        cart: [{ optionName: '도어도크 (블랙)', quantity: 1 }] };
+    const match = orders => matchPickingRows([[], row], 0, columns, orders);
+    assert.equal(match([order])[0].orderId, order.orderId);
+    assert.equal(match([order])[0].reason, '');
+    assert.match(match([order, { ...order, orderId: 'ORD-261117-12346' }])[0].reason, /여러 건/);
+    assert.match(match([{ ...order, cart: [{ optionName: '다른 상품', quantity: 1 }] }])[0].reason, /없음/);
+    assert.match(match([{ ...order, status: '배송중' }])[0].reason, /없음/);
+    assert.match(matchPickingRows([[], row, row], 0, columns, [order])[0].reason, /중복/);
 });

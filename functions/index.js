@@ -448,7 +448,7 @@ exports.lookupCustomerOrders = onCall(callableOptions, async (request) => {
 
 exports.importHanjinWaybill = onCall(callableOptions, async request => {
   requireAdmin(request);
-  const { orderId, trackingNumber } = request.data || {};
+  const { orderId, trackingNumber, expected } = request.data || {};
   if (!ORDER_ID_PATTERN.test(orderId) || typeof trackingNumber !== "string" || !/^\d{10,14}$/.test(trackingNumber)) {
     throw new HttpsError("invalid-argument", "주문번호 또는 송장번호 형식 오류");
   }
@@ -461,6 +461,14 @@ exports.importHanjinWaybill = onCall(callableOptions, async request => {
     if (order.trackingNumber === trackingNumber && order.courier === "한진택배") return { changed: false };
     if (order.trackingNumber || !["배송준비", "입금완료"].includes(order.status)) {
       throw new HttpsError("failed-precondition", "기존 송장 또는 변경된 주문 상태 확인 필요");
+    }
+    if (expected) {
+      const actual = { shipName: order.shipName || "", postalCode: order.postalCode || "",
+        addressBasic: order.addressBasic || "", addressDetail: order.addressDetail || "",
+        cart: (order.cart || []).map(item => ({ optionName: item.optionName || "", quantity: Number(item.quantity || 0) })) };
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new HttpsError("failed-precondition", "수령인 또는 품목이 변경되었습니다. 다시 대조해 주세요.");
+      }
     }
     const used = await tx.get(orders.where("trackingNumber", "==", trackingNumber).limit(1));
     if (!used.empty) throw new HttpsError("already-exists", "다른 주문에 등록된 송장");
