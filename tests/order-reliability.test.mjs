@@ -413,6 +413,27 @@ test('delivery preparation includes older paid orders and pending orders have a 
     assert.doesNotMatch(body.innerHTML, /Test Buyer 3/);
 });
 
+test('select all toggles only visible eligible shipping orders', async () => {
+    const page = pageHarness('admin/index.html');
+    page.capture.queryOrders = [
+        { ...fixtureOrder(0), status: '배송준비' },
+        { ...fixtureOrder(1), status: '입금완료' },
+        { ...fixtureOrder(2), status: '입금대기' }
+    ];
+    await page.run('loadAdminOrders()');
+    page.run("setAdminOrderStatusFilter('배송준비'); selectVisibleHanjinOrders()");
+    assert.equal(page.run('selectedHanjinOrders.size'), 2);
+    assert.equal(page.document.getElementById('hanjin-select-all').textContent, '전체선택 해제');
+    page.document.getElementById('admin-order-search').value = 'Buyer 0';
+    page.run('filterAdminOrders(); selectVisibleHanjinOrders()');
+    assert.equal(page.run('selectedHanjinOrders.size'), 1);
+    page.document.getElementById('admin-order-search').value = '';
+    page.run('filterAdminOrders(); selectVisibleHanjinOrders()');
+    assert.equal(page.run('selectedHanjinOrders.size'), 2);
+    page.run('selectVisibleHanjinOrders()');
+    assert.equal(page.run('selectedHanjinOrders.size'), 0);
+});
+
 test('completed search debounces input, finds older orders and renders bounded batches', async () => {
     const page = pageHarness('admin/index.html');
     page.capture.queryOrders = Array.from({ length: 1500 }, (_, i) => ({

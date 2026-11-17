@@ -558,7 +558,7 @@
                                 <i class="fa-solid fa-file-excel"></i> CSV 다운로드
                             </button>
                             <button type="button" onclick="downloadHanjinExport()" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl">선택 주문 한진 출고파일</button>
-                            <button type="button" onclick="selectVisibleHanjinOrders()" class="w-full sm:w-auto border border-slate-300 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl">표시된 배송준비 주문 선택</button>
+                            <button type="button" id="hanjin-select-all" onclick="selectVisibleHanjinOrders()" title="현재 목록에 표시된 출고 가능 주문" class="w-full sm:w-auto border border-slate-300 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl disabled:opacity-50">전체선택</button>
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 sm:px-5">
@@ -3084,6 +3084,7 @@
                     ? "진행 중인 주문이 없습니다."
                     : adminOrderStatusFilter + " 상태 주문이 없습니다."
         );
+        updateHanjinSelectionButton();
     }
 
     function renderCompletedOrdersUI(orders) {
@@ -3573,17 +3574,34 @@
     window.toggleHanjinSelection = function(orderId, checked) {
         if (checked) selectedHanjinOrders.add(orderId);
         else selectedHanjinOrders.delete(orderId);
+        updateHanjinSelectionButton();
     };
 
-    window.selectVisibleHanjinOrders = function() {
-        const query = document.getElementById('admin-order-search').value;
-        const candidates = globalOrders.filter(order =>
+    function getVisibleHanjinOrders() {
+        const query = document.getElementById('admin-order-search')?.value || '';
+        return globalOrders.filter(order =>
+            /^ORD-\d{6}-(?:\d{4,5}|[a-f0-9]{32})$/.test(order.orderId) &&
             ['입금완료', '배송준비'].includes(order.status) &&
             !order.trackingNumber && matchesOrderSearch(order, query) &&
             (adminOrderStatusFilter === '전체' || adminOrderStatusFilter === '배송준비'));
-        candidates.forEach(order => selectedHanjinOrders.add(order.orderId));
+    }
+
+    function updateHanjinSelectionButton() {
+        const button = document.getElementById('hanjin-select-all');
+        const candidates = getVisibleHanjinOrders();
+        const allSelected = candidates.length > 0 && candidates.every(order => selectedHanjinOrders.has(order.orderId));
+        button.disabled = candidates.length === 0;
+        button.textContent = allSelected ? '전체선택 해제' : '전체선택';
+        button.setAttribute('aria-pressed', String(allSelected));
+    }
+
+    window.selectVisibleHanjinOrders = function() {
+        const candidates = getVisibleHanjinOrders();
+        if (!candidates.length) return;
+        const allSelected = candidates.every(order => selectedHanjinOrders.has(order.orderId));
+        candidates.forEach(order => allSelected ? selectedHanjinOrders.delete(order.orderId) : selectedHanjinOrders.add(order.orderId));
         renderAdminOrdersUI(globalOrders);
-        showToast(candidates.length + '건을 선택했습니다.');
+        showToast(candidates.length + (allSelected ? '건의 선택을 해제했습니다.' : '건을 선택했습니다.'));
     };
 
     window.downloadHanjinExport = async function() {
