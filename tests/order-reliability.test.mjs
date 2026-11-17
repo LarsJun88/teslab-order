@@ -394,7 +394,7 @@ test('admin first-load failure and failed statistics never render false zero cou
     assert.equal(page.document.getElementById('stat-total-orders').textContent, '0건');
 });
 
-test('delivery preparation includes older paid orders and pending orders have a direct payment button', async () => {
+test('paid and preparation orders appear in their own tabs and counts', async () => {
     const page = pageHarness('admin/index.html');
     page.capture.queryOrders = [
         { ...fixtureOrder(0), status: '입금대기' },
@@ -405,14 +405,17 @@ test('delivery preparation includes older paid orders and pending orders have a 
     ];
     await page.run('loadAdminOrders()');
     const counts = page.document.getElementById('order-status-counts').innerHTML;
-    assert.doesNotMatch(counts, /입금완료/);
-    assert.match(counts, /배송준비<\/span><strong[^>]*>2건/);
+    assert.match(counts, /입금완료<\/span><strong[^>]*>1건/);
+    assert.match(counts, /배송준비<\/span><strong[^>]*>1건/);
     assert.match(counts, /주문취소<\/span><strong[^>]*>1건/);
     const body = page.document.getElementById('admin-table-body');
     assert.match(body.innerHTML, /입금완료<\/button>/);
     assert.doesNotMatch(body.innerHTML, /<select onchange="updateOrderStatus/);
-    page.run("setAdminOrderStatusFilter('배송준비')");
+    page.run("setAdminOrderStatusFilter('입금완료')");
     assert.match(body.innerHTML, /Test Buyer 1/);
+    assert.doesNotMatch(body.innerHTML, /Test Buyer 2/);
+    page.run("setAdminOrderStatusFilter('배송준비')");
+    assert.doesNotMatch(body.innerHTML, /Test Buyer 1/);
     assert.match(body.innerHTML, /Test Buyer 2/);
     assert.doesNotMatch(body.innerHTML, /Test Buyer 0/);
     assert.doesNotMatch(body.innerHTML, /Test Buyer 3/);
@@ -426,7 +429,7 @@ test('select all toggles only visible eligible shipping orders', async () => {
         { ...fixtureOrder(2), status: '입금대기' }
     ];
     await page.run('loadAdminOrders()');
-    page.run("setAdminOrderStatusFilter('배송준비'); selectVisibleHanjinOrders()");
+    page.run("setAdminOrderStatusFilter('전체'); selectVisibleHanjinOrders()");
     assert.equal(page.run('selectedHanjinOrders.size'), 2);
     assert.equal(page.document.getElementById('hanjin-select-all').textContent, '전체선택 해제');
     page.document.getElementById('admin-order-search').value = 'Buyer 0';

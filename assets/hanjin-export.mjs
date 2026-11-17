@@ -12,6 +12,21 @@ export function hanjinRows(orders) {
     ];
 }
 
+export async function markHanjinOrdersPreparing(transaction, refs, orders) {
+    const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
+    snapshots.forEach((snapshot, index) => {
+        const current = snapshot.data();
+        const original = orders[index];
+        if (!snapshot.exists() || !['입금완료', '배송준비'].includes(current.status) ||
+            current.trackingNumber || JSON.stringify(hanjinRows([{ ...current, orderId: original.orderId }])[1]) !== JSON.stringify(hanjinRows([original])[1])) {
+            throw new Error('주문 정보가 변경되었습니다. 목록을 새로고침해 다시 선택해 주세요.');
+        }
+    });
+    snapshots.forEach((snapshot, index) => {
+        if (snapshot.data().status === '입금완료') transaction.update(refs[index], { status: '배송준비' });
+    });
+}
+
 export async function createHanjinWorkbook(orders, ExcelJS) {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Sheet1');
@@ -29,7 +44,7 @@ export async function createHanjinWorkbook(orders, ExcelJS) {
     return workbook.xlsx.writeBuffer();
 }
 
-export async function downloadHanjinWorkbook(orders) {
+export async function prepareHanjinWorkbook(orders) {
     if (!window.ExcelJS) {
         await new Promise((resolve, reject) => {
             const script = document.createElement('script');
@@ -39,7 +54,10 @@ export async function downloadHanjinWorkbook(orders) {
             document.head.append(script);
         });
     }
-    const buffer = await createHanjinWorkbook(orders, window.ExcelJS);
+    return createHanjinWorkbook(orders, window.ExcelJS);
+}
+
+export function downloadHanjinWorkbook(buffer) {
     const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     const link = document.createElement('a');
     link.href = url;

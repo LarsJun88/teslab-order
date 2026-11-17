@@ -516,7 +516,7 @@
                         <h3 class="font-bold text-slate-900 text-sm">주문 상태별 건수</h3>
                         <p class="text-[11px] text-slate-400">실제 주문 건 기준, 배송완료 포함</p>
                     </div>
-                    <div id="order-status-counts" class="grid grid-cols-2 sm:grid-cols-5 gap-2" aria-live="polite"></div>
+                    <div id="order-status-counts" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" aria-live="polite"></div>
                 </div>
 
                 <section class="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-5" aria-labelledby="ready-to-ship-title">
@@ -525,7 +525,7 @@
                             <h3 id="ready-to-ship-title" class="font-bold text-slate-900 text-sm flex items-center gap-2">
                                 <i class="fa-solid fa-boxes-stacked text-indigo-600"></i> 발송 준비 품목 수량
                             </h3>
-                            <p class="text-[11px] text-slate-400 mt-1">배송준비 주문을 상품별로 묶어 합산합니다.</p>
+                            <p class="text-[11px] text-slate-400 mt-1">입금완료와 배송준비 주문을 상품별로 묶어 합산합니다.</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold">
                             <span class="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-indigo-700">대상 주문 <strong id="ready-to-ship-order-count" class="text-sm">0건</strong></span>
@@ -1231,6 +1231,7 @@
     let isAdminAuthenticated = false;
     let adminOrderStatusFilter = '입금대기';
     const selectedHanjinOrders = new Set();
+    let isExportingHanjinOrders = false;
     const completedOrderPageSize = 50;
     let completedOrderVisibleLimit = completedOrderPageSize;
     let completedOrderSearchTimer = null;
@@ -2866,7 +2867,7 @@
                     </td>
                     <td class="p-3 text-center space-y-2 min-w-[210px]">
                         ${!/^ORD-\d{6}-(?:\d{4,5}|[a-f0-9]{32})$/.test(order.orderId) ? '주문번호 확인 필요' : order.status === "주문취소" ? `<strong>주문취소</strong><p>${escapeHtml(order.cancelReason || "")}</p>` : `<div class="flex items-stretch gap-1">
-                            ${order.status === '입금대기' ? `<button type="button" onclick="updateOrderStatus('${order.orderId}', '배송준비')" class="rounded bg-indigo-600 text-white px-2 py-1 font-bold">입금완료</button>` : `<span class="rounded bg-slate-100 px-2 py-1 font-bold">${order.status === '입금완료' ? '배송준비' : escapeHtml(order.status)}</span>`}
+                            ${order.status === '입금대기' ? `<button type="button" onclick="updateOrderStatus('${order.orderId}', '입금완료')" class="rounded bg-indigo-600 text-white px-2 py-1 font-bold">입금완료</button>` : `<span class="rounded bg-slate-100 px-2 py-1 font-bold">${escapeHtml(order.status)}</span>`}
                             ${order.status === '배송중' ? `<button type="button" onclick="updateOrderStatus('${order.orderId}', '배송완료')" class="rounded bg-emerald-600 text-white px-2 py-1 font-bold">배송완료</button>` : ''}
                             ${['입금완료','배송준비'].includes(order.status) && !order.trackingNumber ? `<button type="button" onclick="updateOrderStatus('${order.orderId}', '입금대기')" class="rounded border px-2 py-1">입금대기로</button>` : ''}
                             ${order.status === '배송완료' ? `<button type="button" onclick="updateOrderStatus('${order.orderId}', '배송중')" class="rounded border px-2 py-1">배송중으로</button>` : ''}
@@ -2922,6 +2923,7 @@
 
         const statuses = [
             { name: '입금대기', className: 'bg-rose-50 text-rose-700 border-rose-100' },
+            { name: '입금완료', className: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
             { name: '배송준비', className: 'bg-sky-50 text-sky-700 border-sky-100' },
             { name: '배송중', className: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
             { name: '배송완료', className: 'bg-slate-100 text-slate-700 border-slate-200' },
@@ -2929,9 +2931,7 @@
         ];
 
         container.innerHTML = statuses.map(status => {
-            const count = orders.filter(order => status.name === '배송준비'
-                ? ['입금완료', '배송준비'].includes(order.status)
-                : order.status === status.name).length;
+            const count = orders.filter(order => order.status === status.name).length;
             return '<div class="border rounded-lg px-3 py-2 ' + status.className + ' flex items-center justify-between gap-2">' +
                 '<span class="text-xs font-bold whitespace-nowrap">' + status.name + '</span>' +
                 '<strong class="text-sm font-black">' + count.toLocaleString() + '건</strong>' +
@@ -3001,7 +3001,7 @@
 
         orderCountElement.textContent = `${readyOrders.length.toLocaleString()}건`;
         itemCountElement.textContent = `${totalQuantity.toLocaleString()}개`;
-        statusSummary.textContent = `배송준비 ${readyOrders.length.toLocaleString()}건`;
+        statusSummary.textContent = `입금완료·배송준비 ${readyOrders.length.toLocaleString()}건`;
 
         if (productRows.length === 0) {
             list.innerHTML = '<p class="col-span-full border-t border-slate-100 py-4 text-center text-xs font-medium text-slate-400">발송 준비 중인 품목이 없습니다.</p>';
@@ -3040,6 +3040,7 @@
             { name: '전체', className: 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200' },
             { name: '주문취소', className: 'border-rose-200 text-rose-700' },
             { name: '입금대기', className: 'border-rose-100 bg-rose-50 text-rose-700 hover:bg-rose-100' },
+            { name: '입금완료', className: 'border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100' },
             { name: '배송준비', className: 'border-sky-100 bg-sky-50 text-sky-700 hover:bg-sky-100' },
             { name: '배송중', className: 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' }
         ];
@@ -3048,7 +3049,7 @@
         container.innerHTML = statuses.map(status => {
             const count = status.name === '전체'
                 ? activeOrders.filter(order => order.status !== '주문취소').length
-                : activeOrders.filter(order => status.name === '배송준비' ? ['입금완료', '배송준비'].includes(order.status) : order.status === status.name).length;
+                : activeOrders.filter(order => order.status === status.name).length;
             const selected = adminOrderStatusFilter === status.name;
             const selectedClass = selected
                 ? 'ring-2 ring-offset-1 ring-slate-400'
@@ -3072,7 +3073,7 @@
 
         const visibleOrders = allOrders
             .filter(order => order.status !== "배송완료")
-            .filter(order => adminOrderStatusFilter === '전체' ? order.status !== '주문취소' : adminOrderStatusFilter === '배송준비' ? ['입금완료', '배송준비'].includes(order.status) : order.status === adminOrderStatusFilter)
+            .filter(order => adminOrderStatusFilter === '전체' ? order.status !== '주문취소' : order.status === adminOrderStatusFilter)
             .filter(order => matchesOrderSearch(order, query))
             .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
@@ -3121,7 +3122,7 @@
     };
 
     window.setAdminOrderStatusFilter = function(status) {
-        const allowedStatuses = new Set(['전체', '입금대기', '배송준비', '배송중', '주문취소']);
+        const allowedStatuses = new Set(['전체', '입금대기', '입금완료', '배송준비', '배송중', '주문취소']);
         if (!allowedStatuses.has(status)) return;
 
         adminOrderStatusFilter = status;
@@ -3517,7 +3518,7 @@
                 await runTransaction(db, async transaction => {
                     const snap = await transaction.get(orderRef);
                     const status = snap.data()?.status;
-                    const allowed = newStatus === '배송준비' ? ['입금대기'] :
+                    const allowed = newStatus === '입금완료' ? ['입금대기'] :
                         newStatus === '입금대기' ? ['입금완료', '배송준비'] :
                         newStatus === '배송완료' ? ['배송중'] : ['배송완료'];
                     if (!snap.exists() || !allowed.includes(status) || (newStatus === '입금대기' && snap.data().trackingNumber)) {
@@ -3583,7 +3584,7 @@
             /^ORD-\d{6}-(?:\d{4,5}|[a-f0-9]{32})$/.test(order.orderId) &&
             ['입금완료', '배송준비'].includes(order.status) &&
             !order.trackingNumber && matchesOrderSearch(order, query) &&
-            (adminOrderStatusFilter === '전체' || adminOrderStatusFilter === '배송준비'));
+            (adminOrderStatusFilter === '전체' || adminOrderStatusFilter === order.status));
     }
 
     function updateHanjinSelectionButton() {
@@ -3605,10 +3606,16 @@
     };
 
     window.downloadHanjinExport = async function() {
+        if (isExportingHanjinOrders) return;
         if (!isAdminAuthenticated || !selectedHanjinOrders.size) {
-            showToast('출고할 배송준비 주문을 선택해 주세요.');
+            showToast('출고할 입금완료 또는 배송준비 주문을 선택해 주세요.');
             return;
         }
+        if (selectedHanjinOrders.size > 400) {
+            showToast('한 번에 400건까지 선택해 주세요.');
+            return;
+        }
+        isExportingHanjinOrders = true;
         try {
             if (!await loadAdminOrders()) throw new Error('최신 주문 확인에 실패했습니다.');
             const orders = globalOrders.filter(order => selectedHanjinOrders.has(order.orderId));
@@ -3616,11 +3623,23 @@
                 !['입금완료', '배송준비'].includes(order.status) || order.trackingNumber)) {
                 throw new Error('선택한 주문의 상태 또는 송장이 변경되었습니다. 다시 선택해 주세요.');
             }
-            const { downloadHanjinWorkbook } = await import('../assets/hanjin-export.mjs');
-            await downloadHanjinWorkbook(orders);
-            showToast(orders.length + '건의 출고파일을 만들었습니다.');
+            const { prepareHanjinWorkbook, downloadHanjinWorkbook, markHanjinOrdersPreparing } = await import('../assets/hanjin-export.mjs?v=2');
+            const buffer = await prepareHanjinWorkbook(orders);
+            await runTransaction(db, async transaction => {
+                const refs = orders.map(order => doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.orderId));
+                await markHanjinOrdersPreparing(transaction, refs, orders);
+            });
+            orders.forEach(order => {
+                if (order.status === '입금완료') applyOrderPatchInMemory(order.orderId, { status: '배송준비' });
+                selectedHanjinOrders.delete(order.orderId);
+            });
+            renderAdminOrderViews();
+            downloadHanjinWorkbook(buffer);
+            showToast(orders.length + '건의 출고파일을 만들고 배송준비로 이동했습니다.');
         } catch (err) {
             showToast(err.message || '출고파일 생성에 실패했습니다.');
+        } finally {
+            isExportingHanjinOrders = false;
         }
     };
 
