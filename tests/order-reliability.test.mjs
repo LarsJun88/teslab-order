@@ -400,9 +400,14 @@ test('delivery preparation includes older paid orders and pending orders have a 
         { ...fixtureOrder(0), status: '입금대기' },
         { ...fixtureOrder(1), status: '입금완료' },
         { ...fixtureOrder(2), status: '배송준비' },
-        { ...fixtureOrder(3), status: '배송중' }
+        { ...fixtureOrder(3), status: '배송중' },
+        { ...fixtureOrder(4), status: '주문취소' }
     ];
     await page.run('loadAdminOrders()');
+    const counts = page.document.getElementById('order-status-counts').innerHTML;
+    assert.doesNotMatch(counts, /입금완료/);
+    assert.match(counts, /배송준비<\/span><strong[^>]*>2건/);
+    assert.match(counts, /주문취소<\/span><strong[^>]*>1건/);
     const body = page.document.getElementById('admin-table-body');
     assert.match(body.innerHTML, /입금완료<\/button>/);
     assert.doesNotMatch(body.innerHTML, /<select onchange="updateOrderStatus/);

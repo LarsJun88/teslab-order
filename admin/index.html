@@ -525,7 +525,7 @@
                             <h3 id="ready-to-ship-title" class="font-bold text-slate-900 text-sm flex items-center gap-2">
                                 <i class="fa-solid fa-boxes-stacked text-indigo-600"></i> 발송 준비 품목 수량
                             </h3>
-                            <p class="text-[11px] text-slate-400 mt-1">입금완료와 배송준비 주문만 상품별로 묶어 합산합니다. 배송중, 배송완료, 입금대기는 제외됩니다.</p>
+                            <p class="text-[11px] text-slate-400 mt-1">배송준비 주문을 상품별로 묶어 합산합니다.</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold">
                             <span class="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-indigo-700">대상 주문 <strong id="ready-to-ship-order-count" class="text-sm">0건</strong></span>
@@ -2922,14 +2922,16 @@
 
         const statuses = [
             { name: '입금대기', className: 'bg-rose-50 text-rose-700 border-rose-100' },
-            { name: '입금완료', className: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
             { name: '배송준비', className: 'bg-sky-50 text-sky-700 border-sky-100' },
             { name: '배송중', className: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-            { name: '배송완료', className: 'bg-slate-100 text-slate-700 border-slate-200' }
+            { name: '배송완료', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+            { name: '주문취소', className: 'bg-rose-50 text-rose-700 border-rose-100' }
         ];
 
         container.innerHTML = statuses.map(status => {
-            const count = orders.filter(order => order.status === status.name).length;
+            const count = orders.filter(order => status.name === '배송준비'
+                ? ['입금완료', '배송준비'].includes(order.status)
+                : order.status === status.name).length;
             return '<div class="border rounded-lg px-3 py-2 ' + status.className + ' flex items-center justify-between gap-2">' +
                 '<span class="text-xs font-bold whitespace-nowrap">' + status.name + '</span>' +
                 '<strong class="text-sm font-black">' + count.toLocaleString() + '건</strong>' +
@@ -2988,8 +2990,6 @@
             });
         });
 
-        const paidCount = readyOrders.filter(order => order.status === '입금완료').length;
-        const preparingCount = readyOrders.filter(order => order.status === '배송준비').length;
         const productRows = [...itemsByProduct.values()]
             .map(productRow => ({
                 ...productRow,
@@ -3001,7 +3001,7 @@
 
         orderCountElement.textContent = `${readyOrders.length.toLocaleString()}건`;
         itemCountElement.textContent = `${totalQuantity.toLocaleString()}개`;
-        statusSummary.textContent = `입금완료 ${paidCount.toLocaleString()}건 · 배송준비 ${preparingCount.toLocaleString()}건`;
+        statusSummary.textContent = `배송준비 ${readyOrders.length.toLocaleString()}건`;
 
         if (productRows.length === 0) {
             list.innerHTML = '<p class="col-span-full border-t border-slate-100 py-4 text-center text-xs font-medium text-slate-400">발송 준비 중인 품목이 없습니다.</p>';
