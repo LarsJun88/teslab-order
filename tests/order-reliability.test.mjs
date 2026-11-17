@@ -357,6 +357,7 @@ test('admin preserves 1,500 loaded orders, totals and filters after read failure
     page.capture.queryOrders = Array.from({ length: 1500 }, (_, i) => ({ ...fixtureOrder(i), status: statuses[i % 5] }));
     assert.equal(await page.run('loadAdminOrders()'), true);
     assert.equal(page.run('globalOrders.length'), 1500);
+    page.run("setAdminOrderStatusFilter('전체')");
     assert.equal((page.document.getElementById('admin-table-body').innerHTML.match(/<tr class=/g) || []).length, 1200);
     assert.equal((page.document.getElementById('completed-table-body').innerHTML.match(/<tr class=/g) || []).length, 0);
     page.run('isAdminAuthenticated = true; switchAdminSubTab("completed")');
@@ -391,6 +392,25 @@ test('admin first-load failure and failed statistics never render false zero cou
     page.capture.failRead = false;
     assert.equal(await page.run('loadAdminOrders()'), true);
     assert.equal(page.document.getElementById('stat-total-orders').textContent, '0건');
+});
+
+test('delivery preparation includes older paid orders and pending orders have a direct payment button', async () => {
+    const page = pageHarness('admin/index.html');
+    page.capture.queryOrders = [
+        { ...fixtureOrder(0), status: '입금대기' },
+        { ...fixtureOrder(1), status: '입금완료' },
+        { ...fixtureOrder(2), status: '배송준비' },
+        { ...fixtureOrder(3), status: '배송중' }
+    ];
+    await page.run('loadAdminOrders()');
+    const body = page.document.getElementById('admin-table-body');
+    assert.match(body.innerHTML, /입금완료<\/button>/);
+    assert.doesNotMatch(body.innerHTML, /<select onchange="updateOrderStatus/);
+    page.run("setAdminOrderStatusFilter('배송준비')");
+    assert.match(body.innerHTML, /Test Buyer 1/);
+    assert.match(body.innerHTML, /Test Buyer 2/);
+    assert.doesNotMatch(body.innerHTML, /Test Buyer 0/);
+    assert.doesNotMatch(body.innerHTML, /Test Buyer 3/);
 });
 
 test('completed search debounces input, finds older orders and renders bounded batches', async () => {
