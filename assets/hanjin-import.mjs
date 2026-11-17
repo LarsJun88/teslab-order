@@ -69,12 +69,17 @@ function normalizeText(value) {
     return String(value ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
 }
 
-function matchesMasked(value, pattern) {
+function matchesPartialAddress(value, pattern) {
+    const pieces = normalizeText(pattern).split(/\*+/).filter(Boolean);
+    if (pieces.join('').length < 5) return false;
     const text = normalizeText(value);
-    const pieces = normalizeText(pattern).split(/\*+/);
-    if (!pieces.join('') || pieces[0].length < 2) return false;
-    const escaped = pieces.map(piece => piece.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*');
-    return new RegExp('^' + escaped + '$').test(text);
+    let position = 0;
+    for (const piece of pieces) {
+        const index = text.indexOf(piece, position);
+        if (index < 0) return false;
+        position = index + piece.length;
+    }
+    return true;
 }
 
 export function matchPickingRows(rows, header, columns, orders) {
@@ -84,16 +89,13 @@ export function matchPickingRows(rows, header, columns, orders) {
         if (index <= header || !row || !row.some(cell => String(cell ?? '').trim())) return;
         const trackingNumber = String(row[columns.waybill] ?? '').replace(/[\s-]/g, '');
         const name = String(row[columns.name] ?? '').trim();
-        const zip = String(row[columns.zip] ?? '').trim();
         const address = String(row[columns.address] ?? '').trim();
-        const items = normalizeText(row[columns.items]);
+        const namePrefix = normalizeText(name).split('*')[0].slice(0, 2);
         const candidates = orders.filter(order => {
-            const orderItems = normalizeText((order.cart || []).map(item => String(item.optionName || '') + ' x' + Number(item.quantity || 0)).join(' | '));
             const fullAddress = [order.addressBasic, order.addressDetail].filter(Boolean).join(' ');
             return ['입금완료', '배송준비'].includes(order.status) && !order.trackingNumber &&
-                /^\d{5}$/.test(zip) && String(order.postalCode || '') === zip &&
-                matchesMasked(order.shipName, name) && matchesMasked(fullAddress, address) &&
-                items && orderItems === items;
+                namePrefix.length === 2 && normalizeText(order.shipName).startsWith(namePrefix) &&
+                matchesPartialAddress(fullAddress, address);
         });
         const candidate = candidates.length === 1 ? candidates[0] : null;
         entries.push({ line: index + 1, trackingNumber, orderId: candidate?.orderId || '',
@@ -135,14 +137,15 @@ export async function openImport(file, getOrders, save, refresh) {
             const count = entries.filter(row => !row.reason).length;
             summary.textContent = (pickingColumns ? '피킹리스트 자동 대조 · ' : '') +
                 '일치 ' + count + '건 · 확인 필요 ' + (entries.length - count) + '건';
-            preview.textContent = entries.map(row => [row.line + '행', row.orderId, row.expected?.shipName || '', row.trackingNumber, row.reason || '배송중 적용 예정'].filter(Boolean).join('  ')).join('\n');
+            preview.textContent = entries.map(row => [row.line + '행', row.orderId, row.expected?.shipName || '',
+                row.expected ? [row.expected.addressBasic, row.expected.addressDetail].filter(Boolean).join(' ') : '',
+                row.trackingNumber, row.reason || '배송중 적용 예정'].filter(Boolean).join('  ')).join('\n');
             apply.disabled = count === 0;
         }
         function selectColumns() {
             const names = sheets[sheet.value].rows[Number(header.value) - 1] || [];
             const find = label => names.findIndex(name => String(name || '').replace(/\s/g, '') === label);
-            const columnsFound = { waybill: find('운송장번호'), name: find('받는분'), zip: find('받는분우편번호'),
-                address: find('받는분주소'), items: find('품목명') };
+            const columnsFound = { waybill: find('운송장번호'), name: find('받는분'), address: find('받는분주소') };
             pickingColumns = Object.values(columnsFound).every(index => index >= 0) ? columnsFound : null;
             for (const [select, pattern] of [[order, /주문번호|고객주문번호/], [number, /송장번호|운송장번호/]]) {
                 select.replaceChildren(new Option('열 선택', ''));

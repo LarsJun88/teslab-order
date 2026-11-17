@@ -3649,7 +3649,7 @@
             showToast('최신 주문을 불러오지 못했습니다.');
             return;
         }
-        const { openImport } = await import('../assets/hanjin-import.mjs?v=2');
+        const { openImport } = await import('../assets/hanjin-import.mjs?v=3');
         await openImport(file, () => globalOrders, row => httpsCallable(cloudFunctions, 'importHanjinWaybill')(row), loadAdminOrders);
     };
 
