@@ -82,6 +82,15 @@ function matchesPartialAddress(value, pattern) {
     return true;
 }
 
+function normalizePostalCode(value) {
+    const digits = String(value ?? '').trim().replace(/\D/g, '');
+    return digits.length >= 4 && digits.length <= 5 ? digits.padStart(5, '0') : '';
+}
+
+function normalizeItems(value) {
+    return String(value ?? '').split('|').map(normalizeText).filter(Boolean).sort().join('|');
+}
+
 export function matchPickingRows(rows, header, columns, orders) {
     const entries = [];
     const waybills = new Map();
@@ -91,14 +100,33 @@ export function matchPickingRows(rows, header, columns, orders) {
         const name = String(row[columns.name] ?? '').trim();
         const address = String(row[columns.address] ?? '').trim();
         const namePrefix = normalizeText(name).split('*')[0].slice(0, 2);
-        const candidates = orders.filter(order => {
+        const zip = columns.zip >= 0 ? normalizePostalCode(row[columns.zip]) : '';
+        const items = columns.items >= 0 ? normalizeItems(row[columns.items]) : '';
+        const matches = orders.filter(order =>
+            ['입금완료', '배송준비'].includes(order.status) && !order.trackingNumber &&
+            namePrefix.length === 2 && normalizeText(order.shipName).startsWith(namePrefix)
+        ).map(order => {
             const fullAddress = [order.addressBasic, order.addressDetail].filter(Boolean).join(' ');
-            return ['입금완료', '배송준비'].includes(order.status) && !order.trackingNumber &&
-                namePrefix.length === 2 && normalizeText(order.shipName).startsWith(namePrefix) &&
-                matchesPartialAddress(fullAddress, address);
+            const orderItems = normalizeItems((order.cart || []).map(item =>
+                String(item.optionName || '') + ' x' + Number(item.quantity || 0)).join(' | '));
+            return { order, address: matchesPartialAddress(fullAddress, address),
+                zip: Boolean(zip && zip === normalizePostalCode(order.postalCode)),
+                items: Boolean(items && items === orderItems) };
         });
-        const candidate = candidates.length === 1 ? candidates[0] : null;
+        let candidates = matches.filter(match => match.address);
+        if (candidates.length > 1) {
+            const zipAndItems = candidates.filter(match => match.zip && match.items);
+            const sameItems = candidates.filter(match => match.items);
+            const sameZip = candidates.filter(match => match.zip);
+            if (zipAndItems.length) candidates = zipAndItems;
+            else if (sameItems.length) candidates = sameItems;
+            else if (sameZip.length) candidates = sameZip;
+        } else if (candidates.length === 0) {
+            candidates = matches.filter(match => match.zip && match.items);
+        }
+        const candidate = candidates.length === 1 ? candidates[0].order : null;
         entries.push({ line: index + 1, trackingNumber, orderId: candidate?.orderId || '',
+            matchMethod: candidate ? (candidates[0].address ? '이름·주소' : '이름·우편번호·품목') : '',
             expected: candidate ? { shipName: candidate.shipName || '', postalCode: candidate.postalCode || '',
                 addressBasic: candidate.addressBasic || '', addressDetail: candidate.addressDetail || '',
                 cart: (candidate.cart || []).map(item => ({ optionName: item.optionName || '', quantity: Number(item.quantity || 0) })) } : null,
@@ -139,14 +167,15 @@ export async function openImport(file, getOrders, save, refresh) {
                 '일치 ' + count + '건 · 확인 필요 ' + (entries.length - count) + '건';
             preview.textContent = entries.map(row => [row.line + '행', row.orderId, row.expected?.shipName || '',
                 row.expected ? [row.expected.addressBasic, row.expected.addressDetail].filter(Boolean).join(' ') : '',
-                row.trackingNumber, row.reason || '배송중 적용 예정'].filter(Boolean).join('  ')).join('\n');
+                row.trackingNumber, row.matchMethod, row.reason || '배송중 적용 예정'].filter(Boolean).join('  ')).join('\n');
             apply.disabled = count === 0;
         }
         function selectColumns() {
             const names = sheets[sheet.value].rows[Number(header.value) - 1] || [];
             const find = label => names.findIndex(name => String(name || '').replace(/\s/g, '') === label);
-            const columnsFound = { waybill: find('운송장번호'), name: find('받는분'), address: find('받는분주소') };
-            pickingColumns = Object.values(columnsFound).every(index => index >= 0) ? columnsFound : null;
+            const columnsFound = { waybill: find('운송장번호'), name: find('받는분'), address: find('받는분주소'),
+                zip: find('받는분우편번호'), items: find('품목명') };
+            pickingColumns = ['waybill', 'name', 'address'].every(key => columnsFound[key] >= 0) ? columnsFound : null;
             for (const [select, pattern] of [[order, /주문번호|고객주문번호/], [number, /송장번호|운송장번호/]]) {
                 select.replaceChildren(new Option('열 선택', ''));
                 Array.from(names).forEach((name, i) => select.add(new Option(name || (i + 1) + '열', i)));

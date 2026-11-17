@@ -56,7 +56,12 @@ test('picking rows match first two name characters and partial address, rejectin
     assert.match(match([order, { ...order, orderId: 'ORD-261117-12346' }])[0].reason, /여러 건/);
     assert.equal(match([{ ...order, postalCode: '99999', cart: [{ optionName: '다른 상품', quantity: 1 }] }])[0].reason, '');
     assert.equal(match([{ ...order, shipName: '홍길순' }])[0].reason, '');
-    assert.match(match([{ ...order, addressBasic: '서울 다른길 22', addressDetail: '101호' }])[0].reason, /없음/);
+    assert.equal(match([{ ...order, addressBasic: '서울 다른길 22', addressDetail: '101호' }])[0].reason, '');
+    assert.match(match([{ ...order, addressBasic: '서울 다른길 22', postalCode: '99999' }])[0].reason, /없음/);
+    const differentItems = { ...order, orderId: 'ORD-261117-12346', cart: [{ optionName: '클립', quantity: 1 }] };
+    assert.equal(match([order, differentItems])[0].orderId, order.orderId);
+    const differentZip = { ...order, orderId: 'ORD-261117-12346', postalCode: '12345' };
+    assert.equal(match([order, differentZip])[0].orderId, order.orderId);
     assert.match(match([order, { ...order, orderId: 'ORD-261117-12346', shipName: '홍길순' }])[0].reason, /여러 건/);
     assert.match(match([{ ...order, status: '배송중' }])[0].reason, /없음/);
     assert.match(matchPickingRows([[], row, row], 0, columns, [order])[0].reason, /중복/);
