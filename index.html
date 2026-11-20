@@ -654,6 +654,7 @@
 
 <script type="module">
     import { createOrderSubmitter } from "./assets/order-submission.mjs";
+    import { getWeeklyShippingNotice, nextKoreaMidnight } from "./assets/shipping-notice.mjs";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import {
         getAuth,
@@ -704,7 +705,7 @@
     let globalOrders = [];
 
     let localNotice = "필독사항: 본 전용 파츠는 맞춤 제작 상품으로, 입금 확인 이후 순차 제작됩니다.";
-    let localShippingNotice = { enabled: false, title: "배송 일정 안내", message: "", version: "0" };
+    let localShippingNotice = { enabled: false, weeklyEnabled: true, title: "배송 일정 안내", message: "", version: "0" };
 
     let localProducts = [
         {
@@ -1036,10 +1037,9 @@
     window.addEventListener('DOMContentLoaded', () => {
         updateThemeToggle();
         renderNoticeUI(localNotice);
-        renderShippingNoticePopup();
         renderProductsUI();
         calculateCartTotals();
-        runAuth();
+        runAuth().then(connected => { if (!connected) renderShippingNoticePopup(); });
     });
 
     // 🔒 [보안 강화 및 토큰 미스매치 무력화 패치]
@@ -1431,44 +1431,51 @@
             startCatalogSync(catalogDocRef);
         } catch (err) {
             console.error("Firestore catalog load failure. Using cache.", err);
+            renderShippingNoticePopup();
         }
     }
 
     function normalizeShippingNoticeConfig(value) {
         return {
             enabled: Boolean(value?.enabled),
+            weeklyEnabled: value?.weeklyEnabled !== false,
             title: String(value?.title || '배송 일정 안내').trim() || '배송 일정 안내',
             message: String(value?.message || '').trim(),
             version: String(value?.version || '0')
         };
     }
 
-    function getShippingNoticeDismissKey() {
-        return 'teslap_shipping_notice_dismissed_' + localShippingNotice.version;
+    function getActiveShippingNotice() {
+        if (localShippingNotice.enabled && localShippingNotice.message) return localShippingNotice;
+        return localShippingNotice.weeklyEnabled ? getWeeklyShippingNotice() : null;
+    }
+
+    function getShippingNoticeDismissKey(notice) {
+        return 'teslap_shipping_notice_dismissed_' + notice.version;
     }
 
     function renderShippingNoticePopup() {
         const modal = document.getElementById('shipping-notice-modal');
         if (!modal) return;
 
-        const dismissedUntil = Number(localStorage.getItem(getShippingNoticeDismissKey()) || 0);
-        const shouldShow = localShippingNotice.enabled && localShippingNotice.message && dismissedUntil <= Date.now();
+        const notice = getActiveShippingNotice();
+        const dismissedUntil = notice ? Number(localStorage.getItem(getShippingNoticeDismissKey(notice)) || 0) : 0;
+        const shouldShow = Boolean(notice && dismissedUntil <= Date.now());
         modal.classList.toggle('hidden', !shouldShow);
         modal.classList.toggle('flex', shouldShow);
         if (!shouldShow) return;
 
-        document.getElementById('shipping-notice-title').textContent = localShippingNotice.title;
-        document.getElementById('shipping-notice-message').textContent = localShippingNotice.message;
+        document.getElementById('shipping-notice-title').textContent = notice.title;
+        document.getElementById('shipping-notice-message').textContent = notice.message;
         document.getElementById('shipping-notice-dismiss-today').checked = false;
     }
 
     window.closeShippingNoticePopup = function() {
         const modal = document.getElementById('shipping-notice-modal');
         const dismissToday = document.getElementById('shipping-notice-dismiss-today');
-        if (dismissToday?.checked) {
-            const tomorrow = new Date();
-            tomorrow.setHours(24, 0, 0, 0);
-            localStorage.setItem(getShippingNoticeDismissKey(), String(tomorrow.getTime()));
+        const notice = getActiveShippingNotice();
+        if (dismissToday?.checked && notice) {
+            localStorage.setItem(getShippingNoticeDismissKey(notice), String(nextKoreaMidnight()));
         }
         modal?.classList.add('hidden');
         modal?.classList.remove('flex');
